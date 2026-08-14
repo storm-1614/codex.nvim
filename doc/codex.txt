@@ -1,0 +1,81 @@
+*codex.nvim*
+
+codex.nvim                                           OpenAI Codex terminal for Neovim
+
+==============================================================================
+CONTENTS                                                        *codex-contents*
+
+Introduction .................................................. |codex-intro|
+Setup ......................................................... |codex-setup|
+Commands ...................................................... |codex-commands|
+Keymaps ....................................................... |codex-keymaps|
+Configuration ................................................. |codex-config|
+
+==============================================================================
+INTRODUCTION                                                     *codex-intro*
+
+codex.nvim opens the Codex CLI in a managed vertical terminal. It follows the
+interaction model and <leader>a* key layout of claudecode.nvim, while keeping
+the implementation dependency-free and native to Neovim.
+
+==============================================================================
+SETUP                                                            *codex-setup*
+
+    require("codex").setup()
+
+The `codex` executable must be on PATH. Neovim 0.10 or newer is required.
+
+==============================================================================
+COMMANDS                                                       *codex-commands*
+
+                                                    *:Codex*
+:Codex [prompt]       Open Codex, optionally send prompt.
+:CodexOpen             Open the side panel.
+:CodexStart             Start Codex CLI.
+:CodexResume            Resume the most recent session.
+:CodexContinue          Continue the most recent session.
+:CodexToggle           Toggle the side panel.
+:CodexFocus            Focus the side panel.
+:CodexClose            Hide the side panel but keep the process alive.
+:CodexStop             Stop Codex and close the side panel.
+:CodexStatus           Show process status.
+:CodexAdd              Send current file or insert a visual selection.
+:CodexSend {prompt}    Send a prompt to Codex.
+:CodexSendText {text}   Send text; with ! do not press Enter.
+:CodexTreeAdd {file}    Send a file from a tree to Codex.
+:CodexSelectModel      Select a configured model or enter one.
+
+:CodexDiffAccept, :CodexDiffDeny, :CodexDiffAcceptAll,
+:CodexDiffDenyAll are compatibility commands. Codex CLI applies changes
+through its own workflow and does not expose claudecode.nvim's IDE diff
+protocol, so these commands report that no nvim-managed diff is available.
+
+==============================================================================
+KEYMAPS                                                        *codex-keymaps*
+
+Default mappings (when `keymaps.enabled` is true):
+
+<leader>ac              Toggle side panel.
+<leader>af              Focus/toggle side panel.
+<leader>ar              Resume the most recent session.
+<leader>aC              Continue the most recent session.
+<leader>ab              Send current file or insert a visual selection.
+<leader>as              Insert visual selection into the Codex prompt.
+<leader>aa / <leader>ad Accept / deny current diff compatibility action.
+<leader>aA / <leader>aD Accept / deny all diff compatibility action.
+<leader>am              Select model.
+<leader>ax              Stop Codex.
+
+==============================================================================
+CONFIGURATION                                                    *codex-config*
+
+See README.md for the complete option list. The most important options are:
+
+terminal_cmd            String or argv list, default: "codex".
+cwd                     Working directory; nil uses the current git root.
+git_repo_cwd            Resolve cwd from the current file, default: true.
+split_side              "left" or "right", default: "right".
+split_width_percentage  Side panel width fraction, default: 0.35.
+auto_close              Close panel after CLI exit, default: true.
+models                  Values shown by :CodexSelectModel.
+keymaps                 Keymap names and enabled flag.
