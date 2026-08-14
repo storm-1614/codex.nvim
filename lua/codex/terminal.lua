@@ -9,6 +9,7 @@ local state = {
   cwd = nil,
   model = nil,
   previous_win = nil,
+  starting = false,
 }
 
 local function job_is_running()
@@ -58,6 +59,7 @@ local function terminal_exit(job, code, _)
     end
     local exited_buf = state.buf
     state.job = nil
+    state.starting = false
     if config.get().on_exit then
       pcall(config.get().on_exit, vim.deepcopy(state), code)
     end
@@ -156,6 +158,12 @@ function M.open(extra_args)
     return false
   end
   state.job = job
+  state.starting = true
+  vim.defer_fn(function()
+    if state.job == job then
+      state.starting = false
+    end
+  end, config.get().startup_delay_ms)
 
   if config.get().on_open then
     pcall(config.get().on_open, vim.deepcopy(state))
@@ -182,6 +190,7 @@ function M.stop()
     vim.fn.jobstop(state.job)
     state.job = nil
   end
+  state.starting = false
   close_window()
   cleanup_buffer()
   if config.get().on_close then
@@ -241,19 +250,7 @@ local function send_channel(channel, payload)
   return true
 end
 
-function M.send(text, opts)
-  opts = opts or {}
-  text = util.escape_prompt(text or "")
-  if text == "" then
-    return false
-  end
-  -- Selection insertion must also work before Codex has been opened.
-  if not M.is_open() or not M.is_running() then
-    if not M.open() then
-      return false
-    end
-  end
-
+local function send_payload(text, opts)
   local channel = terminal_channel()
   if not channel or channel == 0 then
     util.notify("Unable to send text to Codex CLI: terminal channel is unavailable", vim.log.levels.ERROR)
@@ -263,8 +260,8 @@ function M.send(text, opts)
   local payload = paste_payload(text)
   if opts.submit ~= false then
     -- Keep the submit byte in the same write, after the closing paste marker.
-    -- This matches claudecode.nvim and prevents a separate delayed event from
-    -- unexpectedly submitting a visual selection.
+    -- This prevents a separate delayed event from unexpectedly submitting a
+    -- visual selection.
     payload = payload .. "\r"
   end
   if not send_channel(channel, payload) then
@@ -275,6 +272,41 @@ function M.send(text, opts)
     M.focus()
   end
   return true
+end
+
+function M.send(text, opts)
+  opts = opts or {}
+  text = util.escape_prompt(text or "")
+  if text == "" then
+    return false
+  end
+
+  local was_running = M.is_running()
+  local cold_start = not was_running or state.starting
+  local needs_open = not M.is_open() or not was_running
+  if needs_open then
+    -- Selection insertion must also work before Codex has been opened.
+    if not M.open() then
+      return false
+    end
+  end
+
+  if cold_start then
+    local job = state.job
+    -- A newly spawned Codex TUI can clear or redraw its input area while it is
+    -- starting. Defer the first write until the initial prompt is available.
+    -- This is the cold-start path only; an already running session remains
+    -- synchronous.
+    vim.defer_fn(function()
+      if state.job == job and job_is_running() then
+        state.starting = false
+        send_payload(text, opts)
+      end
+    end, config.get().startup_delay_ms)
+    return true
+  end
+
+  return send_payload(text, opts)
 end
 
 function M.send_selection(selection)

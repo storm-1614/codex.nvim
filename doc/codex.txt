@@ -77,5 +77,6 @@ git_repo_cwd            Resolve cwd from the current file, default: true.
 split_side              "left" or "right", default: "right".
 split_width_percentage  Side panel width fraction, default: 0.35.
 auto_close              Close panel after CLI exit, default: true.
+startup_delay_ms        Delay before the first send to a new CLI, default: 300.
 models                  Values shown by :CodexSelectModel.
 keymaps                 Keymap names and enabled flag.

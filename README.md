@@ -157,6 +157,7 @@ require("codex").setup({
   enter_insert = true,
   auto_close = true,
   focus_after_send = true,
+  startup_delay_ms = 300,             -- wait before the first cold-start send
 
   terminal_win_opts = {
     number = false,

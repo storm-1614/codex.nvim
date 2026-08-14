@@ -14,6 +14,9 @@ local defaults = {
   enter_insert = true,
   auto_close = true,
   focus_after_send = true,
+  -- Give the interactive CLI time to render its first prompt before sending
+  -- text to a newly created terminal.
+  startup_delay_ms = 300,
   terminal_win_opts = {
     number = false,
     relativenumber = false,
@@ -64,6 +67,9 @@ function M.setup(opts)
       or M.values.split_width_percentage <= 0
       or M.values.split_width_percentage >= 1 then
     error("codex.nvim: split_width_percentage must be between 0 and 1")
+  end
+  if type(M.values.startup_delay_ms) ~= "number" or M.values.startup_delay_ms < 0 then
+    error("codex.nvim: startup_delay_ms must be a non-negative number")
   end
 end
 

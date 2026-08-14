@@ -12,6 +12,7 @@ config.setup({
   keymaps = { enabled = false },
   focus_after_send = false,
   auto_close = false,
+  startup_delay_ms = 300,
 })
 
 local state = terminal.get_state()
@@ -25,7 +26,9 @@ vim.b[buffer].terminal_job_id = 42
 
 local original_jobwait = vim.fn.jobwait
 local original_chansend = vim.fn.chansend
+local original_defer_fn = vim.defer_fn
 local sent = {}
+local deferred = {}
 
 vim.fn.jobwait = function()
   return { -1 }
@@ -33,6 +36,9 @@ end
 vim.fn.chansend = function(channel, payload)
   table.insert(sent, { channel = channel, payload = payload })
   return #payload
+end
+vim.defer_fn = function(callback, delay)
+  table.insert(deferred, { callback = callback, delay = delay })
 end
 
 local ok = terminal.send("first line\nsecond line")
@@ -69,8 +75,12 @@ vim.fn.termopen = function()
 end
 sent = {}
 ok = terminal.send("opened selection", { submit = false })
-assert(ok, "text must be inserted when Codex was not already open")
+assert(ok, "text must be queued when Codex was not already open")
 assert(state.buf and state.win and state.job == 42, "sending text must open Codex when necessary")
+assert_equal(sent, {}, "cold-start text must wait for the Codex prompt")
+assert_equal(#deferred, 2, "opening and sending must schedule startup callbacks")
+assert_equal(deferred[2].delay, 300)
+deferred[2].callback()
 assert_equal(sent, { { channel = 42, payload = "opened selection" } })
 local opened_buf = state.buf
 terminal.close()
@@ -100,6 +110,7 @@ terminal.open = original_open
 
 vim.fn.jobwait = original_jobwait
 vim.fn.chansend = original_chansend
+vim.defer_fn = original_defer_fn
 vim.api.nvim_win_set_buf(0, original_buf)
 vim.api.nvim_buf_delete(buffer, { force = true })
 state.buf = nil
