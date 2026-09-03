@@ -56,21 +56,94 @@ local defaults = {
 
 M.values = vim.deepcopy(defaults)
 
+local function assert_type(name, value, expected)
+  if type(value) ~= expected then
+    error(string.format("codex.nvim: %s must be a %s", name, expected))
+  end
+end
+
+local function assert_boolean(name, value)
+  assert_type(name, value, "boolean")
+end
+
+local function assert_finite_number(name, value)
+  assert_type(name, value, "number")
+  if value ~= value or math.abs(value) == math.huge then
+    error("codex.nvim: " .. name .. " must be finite")
+  end
+end
+
+local function validate_command(command)
+  if type(command) == "string" then
+    return
+  end
+  if type(command) ~= "table" or #command == 0 then
+    error("codex.nvim: terminal_cmd must be a command string or a non-empty argv list")
+  end
+  for index, arg in ipairs(command) do
+    if type(arg) ~= "string" or arg == "" then
+      error(string.format("codex.nvim: terminal_cmd[%d] must be a non-empty string", index))
+    end
+  end
+end
+
+local function validate_env(env)
+  assert_type("env", env, "table")
+  for name, value in pairs(env) do
+    if type(name) ~= "string" or type(value) ~= "string" then
+      error("codex.nvim: env must map string names to string values")
+    end
+  end
+end
+
+local function validate_models(models)
+  assert_type("models", models, "table")
+  for index, model in ipairs(models) do
+    if type(model) ~= "string" or model == "" then
+      error(string.format("codex.nvim: models[%d] must be a non-empty string", index))
+    end
+  end
+end
+
 function M.setup(opts)
   opts = opts or {}
-  M.values = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts)
+  assert_type("setup options", opts, "table")
+  local values = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts)
 
-  if M.values.split_side ~= "left" and M.values.split_side ~= "right" then
+  validate_command(values.terminal_cmd)
+  if values.cwd ~= nil then
+    assert_type("cwd", values.cwd, "string")
+  end
+  assert_boolean("git_repo_cwd", values.git_repo_cwd)
+  validate_env(values.env)
+  if values.split_side ~= "left" and values.split_side ~= "right" then
     error("codex.nvim: split_side must be 'left' or 'right'")
   end
-  if type(M.values.split_width_percentage) ~= "number"
-      or M.values.split_width_percentage <= 0
-      or M.values.split_width_percentage >= 1 then
+  assert_finite_number("split_width_percentage", values.split_width_percentage)
+  if values.split_width_percentage <= 0
+      or values.split_width_percentage >= 1 then
     error("codex.nvim: split_width_percentage must be between 0 and 1")
   end
-  if type(M.values.startup_delay_ms) ~= "number" or M.values.startup_delay_ms < 0 then
+  assert_boolean("enter_insert", values.enter_insert)
+  assert_boolean("auto_close", values.auto_close)
+  assert_boolean("focus_after_send", values.focus_after_send)
+  assert_finite_number("startup_delay_ms", values.startup_delay_ms)
+  if values.startup_delay_ms < 0 then
     error("codex.nvim: startup_delay_ms must be a non-negative number")
   end
+  assert_type("terminal_win_opts", values.terminal_win_opts, "table")
+  validate_models(values.models)
+  assert_type("keymaps", values.keymaps, "table")
+  assert_boolean("keymaps.enabled", values.keymaps.enabled)
+  for _, callback_name in ipairs({ "on_open", "on_close", "on_exit" }) do
+    local callback = values[callback_name]
+    if callback ~= nil and type(callback) ~= "function" then
+      error("codex.nvim: " .. callback_name .. " must be a function or nil")
+    end
+  end
+
+  -- Do not leave the plugin in a partially invalid state if validation fails.
+  M.values = values
 end
 
 function M.get()

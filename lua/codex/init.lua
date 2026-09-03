@@ -29,10 +29,10 @@ function M.setup_keymaps()
       return terminal.send_selection(selection_or_nil())
     end
     return terminal.send_current_file()
-  end, vim.tbl_extend("force", map_opts, { desc = "Codex: insert selection/file" }))
+  end, vim.tbl_extend("force", map_opts, { desc = "Codex: insert file/selection reference" }))
   vim.keymap.set("v", km.send, function()
     return terminal.send_selection(selection_or_nil())
-  end, vim.tbl_extend("force", map_opts, { desc = "Codex: insert selection" }))
+  end, vim.tbl_extend("force", map_opts, { desc = "Codex: insert selection reference" }))
   vim.keymap.set("n", km.tree_add, M.tree_add, vim.tbl_extend("force", map_opts, { desc = "Codex: add file" }))
   vim.keymap.set("n", km.diff_accept, M.diff_accept, vim.tbl_extend("force", map_opts, { desc = "Codex: accept diff" }))
   vim.keymap.set("n", km.diff_deny, M.diff_deny, vim.tbl_extend("force", map_opts, { desc = "Codex: deny diff" }))
@@ -46,13 +46,15 @@ function M.resume()
   if terminal.is_running() then
     terminal.stop()
   end
-  return terminal.open({ "resume", "--last" })
+  -- `codex resume` opens Codex's built-in session picker.
+  return terminal.open({ "resume" })
 end
 
 function M.continue_session()
   if terminal.is_running() then
     terminal.stop()
   end
+  -- `--last` deliberately skips the picker and resumes the latest session.
   return terminal.open({ "resume", "--last" })
 end
 
@@ -96,15 +98,21 @@ function M.send_selection()
 end
 
 function M.add_current(file, start_line, end_line)
-  if file and file ~= "" then
-    local location = vim.fn.fnamemodify(vim.fn.expand(file), ":p")
-    local suffix = ""
-    if start_line and start_line > 0 then
-      suffix = string.format(" (lines %d-%d)", start_line, end_line or start_line)
-    end
-    return terminal.send("Please inspect and process this file" .. suffix .. ":" .. location)
+  local target = file
+  if not target or target == "" then
+    target = util.current_file()
   end
-  return terminal.send_current_file()
+  if not target then
+    util.notify("The current buffer has no file name", vim.log.levels.WARN)
+    return false
+  end
+
+  local location = vim.fn.fnamemodify(vim.fn.expand(target), ":p")
+  local suffix = ""
+  if start_line and start_line > 0 then
+    suffix = string.format(" (lines %d-%d)", start_line, end_line or start_line)
+  end
+  return terminal.send("Please inspect and process this file" .. suffix .. ": " .. location)
 end
 
 function M.tree_add(file)

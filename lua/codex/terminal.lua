@@ -10,6 +10,7 @@ local state = {
   model = nil,
   previous_win = nil,
   starting = false,
+  pending_sends = {},
 }
 
 local function job_is_running()
@@ -33,6 +34,28 @@ end
 local function apply_window_options(win, opts)
   for name, value in pairs(opts or {}) do
     pcall(vim.api.nvim_set_option_value, name, value, { win = win })
+  end
+end
+
+local send_payload
+
+local function clear_pending_sends()
+  state.pending_sends = {}
+end
+
+local function flush_pending_sends(job)
+  if state.job ~= job or not job_is_running() then
+    clear_pending_sends()
+    return
+  end
+
+  local pending = state.pending_sends
+  clear_pending_sends()
+  for _, request in ipairs(pending) do
+    if state.job ~= job or not job_is_running() then
+      break
+    end
+    send_payload(request.text, request.opts)
   end
 end
 
@@ -60,6 +83,7 @@ local function terminal_exit(job, code, _)
     local exited_buf = state.buf
     state.job = nil
     state.starting = false
+    clear_pending_sends()
     if config.get().on_exit then
       pcall(config.get().on_exit, vim.deepcopy(state), code)
     end
@@ -133,6 +157,7 @@ function M.open(extra_args)
 
   state.previous_win = vim.api.nvim_get_current_win()
   state.cwd = util.cwd(config.get())
+  clear_pending_sends()
   state.win = create_window()
   state.buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(state.buf, "[Codex]")
@@ -162,6 +187,7 @@ function M.open(extra_args)
   vim.defer_fn(function()
     if state.job == job then
       state.starting = false
+      flush_pending_sends(job)
     end
   end, config.get().startup_delay_ms)
 
@@ -191,6 +217,7 @@ function M.stop()
     state.job = nil
   end
   state.starting = false
+  clear_pending_sends()
   close_window()
   cleanup_buffer()
   if config.get().on_close then
@@ -250,7 +277,7 @@ local function send_channel(channel, payload)
   return true
 end
 
-local function send_payload(text, opts)
+send_payload = function(text, opts)
   local channel = terminal_channel()
   if not channel or channel == 0 then
     util.notify("Unable to send text to Codex CLI: terminal channel is unavailable", vim.log.levels.ERROR)
@@ -282,7 +309,6 @@ function M.send(text, opts)
   end
 
   local was_running = M.is_running()
-  local cold_start = not was_running or state.starting
   local needs_open = not M.is_open() or not was_running
   if needs_open then
     -- Selection insertion must also work before Codex has been opened.
@@ -291,18 +317,11 @@ function M.send(text, opts)
     end
   end
 
-  if cold_start then
-    local job = state.job
-    -- A newly spawned Codex TUI can clear or redraw its input area while it is
-    -- starting. Defer the first write until the initial prompt is available.
-    -- This is the cold-start path only; an already running session remains
-    -- synchronous.
-    vim.defer_fn(function()
-      if state.job == job and job_is_running() then
-        state.starting = false
-        send_payload(text, opts)
-      end
-    end, config.get().startup_delay_ms)
+  if state.starting then
+    -- A newly spawned TUI may redraw its input area while starting. Keep all
+    -- requests in one FIFO queue so a second send during this interval does
+    -- not incur another full delay or overtake the first prompt.
+    state.pending_sends[#state.pending_sends + 1] = { text = text, opts = opts }
     return true
   end
 
@@ -315,10 +334,28 @@ function M.send_selection(selection)
     util.notify("Select text to insert into Codex first", vim.log.levels.WARN)
     return false
   end
-  -- Insert exactly what was selected. Do not add an instruction, file path,
-  -- line range, or code fences; the Codex prompt should contain the user's
-  -- selected text and nothing else.
-  return M.send(selection.text or table.concat(selection.lines, "\n"), { submit = false })
+
+  local file = selection.file or util.current_file()
+  if not file then
+    util.notify("The selected buffer has no file name", vim.log.levels.WARN)
+    return false
+  end
+
+  local start_line = selection.start_line
+  local end_line = selection.end_line or start_line
+  if not start_line or start_line < 1 or not end_line or end_line < start_line then
+    util.notify("The selected text has no valid line range", vim.log.levels.WARN)
+    return false
+  end
+
+  local location = vim.fn.fnamemodify(vim.fn.expand(file), ":p")
+  local prompt = string.format(
+    "Please inspect and process this file (lines %d-%d): %s",
+    start_line,
+    end_line,
+    location
+  )
+  return M.send(prompt, { submit = false })
 end
 
 function M.send_current_file()

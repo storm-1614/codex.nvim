@@ -64,7 +64,7 @@ assert_equal(reverse_selection.end_line, 4)
 assert_equal(reverse_selection.lines, { "alpha", "beta", "gamma", "delta" })
 vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
 
--- Verify that sending a selection inserts exactly the selected text.
+-- Verify that sending a selection references its file and line range.
 local sent_prompt
 local sent_opts
 local original_send = terminal.send
@@ -81,8 +81,8 @@ local sent = terminal.send_selection({
 })
 terminal.send = original_send
 assert(sent, "send_selection must report success when the sender succeeds")
-assert_equal(sent_prompt, "gamma\ndelta")
-assert_equal(sent_opts, { submit = false }, "selection insertion must leave the prompt in the Codex input box")
+assert_equal(sent_prompt, "Please inspect and process this file (lines 3-4): /tmp/example.lua")
+assert_equal(sent_opts, { submit = false }, "selection reference must leave the prompt in the Codex input box")
 
 print("visual selection tests passed")
 vim.cmd("qa!")

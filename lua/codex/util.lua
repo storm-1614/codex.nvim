@@ -25,14 +25,10 @@ function M.git_root(path)
     return nil
   end
   local dir = vim.fn.fnamemodify(path, ":h")
-  local result = vim.system({ "git", "-C", dir, "rev-parse", "--show-toplevel" }, {
-    text = true,
-    timeout = 1000,
-  }):wait()
-  if result.code == 0 then
-    return vim.trim(result.stdout)
-  end
-  return nil
+  -- Neovim 0.10+ provides a filesystem-only upward search. Using it instead
+  -- of synchronously spawning `git rev-parse` keeps opening Codex responsive,
+  -- including in slow repositories and network-mounted worktrees.
+  return vim.fs.root(dir, { ".git" })
 end
 
 function M.cwd(config)

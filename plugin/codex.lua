@@ -14,7 +14,7 @@ command("Codex", function(args)
 end, { nargs = "*", desc = "Open Codex CLI and optionally send a prompt" })
 command("CodexOpen", codex.open, { desc = "Open Codex CLI" })
 command("CodexStart", codex.start, { desc = "Start Codex CLI" })
-command("CodexResume", codex.resume, { desc = "Resume the most recent Codex session" })
+command("CodexResume", codex.resume, { desc = "Open the Codex session picker" })
 command("CodexContinue", codex.continue_session, { desc = "Continue the most recent Codex session" })
 command("CodexToggle", codex.toggle, { desc = "Toggle Codex side panel" })
 command("CodexFocus", codex.focus, { desc = "Focus Codex side panel" })
@@ -23,8 +23,10 @@ command("CodexStop", codex.stop, { desc = "Stop Codex CLI" })
 command("CodexStatus", codex.status, { desc = "Show Codex status" })
 command("CodexAdd", function(args)
   local file = args.fargs[1]
-  local start_line = args.line1 > 0 and args.line1 or nil
-  local end_line = args.line2 > 0 and args.line2 or nil
+  -- `line1` and `line2` default to the current line even when no Ex range was
+  -- supplied. Only attach a line range when the caller explicitly supplied it.
+  local start_line = args.range > 0 and args.line1 or nil
+  local end_line = args.range > 0 and args.line2 or nil
   codex.add_current(file, start_line, end_line)
 end, { nargs = "*", range = true, desc = "Send current file/selection to Codex" })
 command("CodexTreeAdd", function(args)

@@ -8,9 +8,9 @@ The interaction model and default `<leader>a*` key layout are inspired by [`code
 
 - Open Codex in a right or left vertical side panel
 - Reuse the same Codex session when the panel is hidden
-- Send the current file to Codex or insert a visual selection into the Codex prompt
+- Send the current file to Codex or reference a visual selection by file and line range
 - Send arbitrary prompts from a command or Lua
-- Resume the most recent Codex session
+- Resume a prior Codex session from the built-in picker, or continue the most recent one
 - Select a model and pass it to the next Codex process
 - Use the current Git repository root as the working directory
 - Configure the executable, working directory, environment, panel width, and keymaps
@@ -96,13 +96,13 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 | --- | --- | --- |
 | `<leader>ac` | Normal | Toggle the Codex side panel |
 | `<leader>af` | Normal | Focus the side panel; close it if already focused |
-| `<leader>ar` | Normal | Resume the most recent Codex session |
+| `<leader>ar` | Normal | Open Codex's session picker |
 | `<leader>aC` | Normal | Continue the most recent Codex session |
 | `<leader>am` | Normal | Select a model |
 | `<leader>ab` | Normal | Send the current file |
-| `<leader>ab` | Visual | Send the selected text |
+| `<leader>ab` | Visual | Insert the selected file and line range |
 | `<leader>as` | Normal | Add the current file |
-| `<leader>as` | Visual | Send the selected text |
+| `<leader>as` | Visual | Insert the selected file and line range |
 | `<leader>aa` | Normal | Accept current diff compatibility action |
 | `<leader>ad` | Normal | Deny current diff compatibility action |
 | `<leader>aA` | Normal | Accept all diff compatibility actions |
@@ -121,9 +121,10 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 :CodexClose                        " Hide the panel, keep the process alive
 :CodexStop                         " Stop Codex and close the panel
 :CodexStatus                       " Show Codex status
-:CodexResume                       " Resume the latest session
+:CodexResume                       " Open Codex's session picker
 :CodexContinue                     " Continue the latest session
 :CodexAdd                          " Send the current file
+:{start},{end}CodexAdd             " Send the current file with a line range
 :CodexSend Explain this function   " Send a prompt and press Enter
 :CodexSendText Explain this code   " Send text and press Enter
 :CodexSendText! partial text       " Send text without pressing Enter
@@ -157,7 +158,7 @@ require("codex").setup({
   enter_insert = true,
   auto_close = true,
   focus_after_send = true,
-  startup_delay_ms = 300,             -- wait before the first cold-start send
+  startup_delay_ms = 300,             -- settle the TUI before flushing queued sends
 
   terminal_win_opts = {
     number = false,
@@ -216,6 +217,16 @@ After selecting a model, the next Codex process is started with:
 ```text
 --model <selected-model>
 ```
+
+### Testing
+
+Run the complete syntax-check and headless Neovim test suite with:
+
+```sh
+make all
+```
+
+Run only the tests with `make test`, or syntax checks with `make check`.
 
 ### Working directory
 

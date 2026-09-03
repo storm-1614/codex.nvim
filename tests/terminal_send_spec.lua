@@ -22,6 +22,8 @@ vim.api.nvim_win_set_buf(0, buffer)
 state.buf = buffer
 state.job = 42
 state.win = vim.api.nvim_get_current_win()
+state.starting = false
+state.pending_sends = {}
 vim.b[buffer].terminal_job_id = 42
 
 local original_jobwait = vim.fn.jobwait
@@ -56,14 +58,19 @@ assert(ok, "submit=false must still send text")
 assert_equal(sent, { { channel = 42, payload = "single line" } })
 
 sent = {}
-ok = terminal.send_selection({ lines = { "gamma", "delta" }, text = "gamma\ndelta" })
+ok = terminal.send_selection({
+  file = "/tmp/example.lua",
+  start_line = 3,
+  end_line = 4,
+  lines = { "gamma", "delta" },
+})
 assert(ok, "a visual selection must be sent successfully")
 assert_equal(sent, {
   {
     channel = 42,
-    payload = "\27[200~gamma\ndelta\27[201~",
+    payload = "Please inspect and process this file (lines 3-4): /tmp/example.lua",
   },
-}, "a visual selection must not be submitted")
+}, "a visual selection must reference its file and line range without submitting")
 
 -- A missing terminal must be opened before the selected text is inserted.
 local original_termopen = vim.fn.termopen
@@ -78,10 +85,17 @@ ok = terminal.send("opened selection", { submit = false })
 assert(ok, "text must be queued when Codex was not already open")
 assert(state.buf and state.win and state.job == 42, "sending text must open Codex when necessary")
 assert_equal(sent, {}, "cold-start text must wait for the Codex prompt")
-assert_equal(#deferred, 2, "opening and sending must schedule startup callbacks")
-assert_equal(deferred[2].delay, 300)
-deferred[2].callback()
-assert_equal(sent, { { channel = 42, payload = "opened selection" } })
+assert_equal(#deferred, 1, "opening starts one startup queue timer")
+assert_equal(deferred[1].delay, 300)
+
+ok = terminal.send("queued second", { submit = false })
+assert(ok, "a second cold-start send must be accepted")
+assert_equal(#deferred, 1, "all cold-start sends must share the startup timer")
+deferred[1].callback()
+assert_equal(sent, {
+  { channel = 42, payload = "opened selection" },
+  { channel = 42, payload = "queued second" },
+}, "cold-start text must be flushed once, in FIFO order")
 local opened_buf = state.buf
 terminal.close()
 state.job = nil
@@ -116,6 +130,8 @@ vim.api.nvim_buf_delete(buffer, { force = true })
 state.buf = nil
 state.job = nil
 state.win = nil
+state.starting = false
+state.pending_sends = {}
 
 print("terminal send tests passed")
 vim.cmd("qa!")

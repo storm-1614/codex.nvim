@@ -32,14 +32,14 @@ COMMANDS                                                       *codex-commands*
 :Codex [prompt]       Open Codex, optionally send prompt.
 :CodexOpen             Open the side panel.
 :CodexStart             Start Codex CLI.
-:CodexResume            Resume the most recent session.
+:CodexResume            Open Codex's session picker.
 :CodexContinue          Continue the most recent session.
 :CodexToggle           Toggle the side panel.
 :CodexFocus            Focus the side panel.
 :CodexClose            Hide the side panel but keep the process alive.
 :CodexStop             Stop Codex and close the side panel.
 :CodexStatus           Show process status.
-:CodexAdd              Send current file or insert a visual selection.
+:CodexAdd              Send the current file; an Ex range adds line context.
 :CodexSend {prompt}    Send a prompt to Codex.
 :CodexSendText {text}   Send text; with ! do not press Enter.
 :CodexTreeAdd {file}    Send a file from a tree to Codex.
@@ -57,10 +57,10 @@ Default mappings (when `keymaps.enabled` is true):
 
 <leader>ac              Toggle side panel.
 <leader>af              Focus/toggle side panel.
-<leader>ar              Resume the most recent session.
+<leader>ar              Open Codex's session picker.
 <leader>aC              Continue the most recent session.
-<leader>ab              Send current file or insert a visual selection.
-<leader>as              Insert visual selection into the Codex prompt.
+<leader>ab              Send current file or insert a visual selection reference.
+<leader>as              Insert the selected file and line range into the Codex prompt.
 <leader>aa / <leader>ad Accept / deny current diff compatibility action.
 <leader>aA / <leader>aD Accept / deny all diff compatibility action.
 <leader>am              Select model.
