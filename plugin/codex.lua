@@ -43,3 +43,4 @@ command("CodexDiffAcceptAll", codex.diff_accept_all, { desc = "Accept all Codex 
 command("CodexDiffDenyAll", codex.diff_deny_all, { desc = "Deny all Codex diffs" })
 command("CodexCloseAllDiffs", codex.diff_deny_all, { desc = "Close all Codex diffs" })
 command("CodexSelectModel", codex.select_model, { desc = "Select Codex model" })
+command("CodexSelectBuffer", codex.select_buffer, { desc = "Insert a Neovim buffer into Codex" })

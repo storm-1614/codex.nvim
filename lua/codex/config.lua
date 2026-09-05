@@ -38,6 +38,7 @@ local defaults = {
     resume = "<leader>ar",
     continue_session = "<leader>aC",
     select_model = "<leader>am",
+    select_buffer = "<leader>ap",
     add_current = "<leader>ab",
     send = "<leader>as",
     tree_add = "<leader>as",

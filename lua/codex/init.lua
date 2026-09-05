@@ -39,6 +39,7 @@ function M.setup_keymaps()
   vim.keymap.set("n", km.diff_accept_all, M.diff_accept_all, vim.tbl_extend("force", map_opts, { desc = "Codex: accept all diffs" }))
   vim.keymap.set("n", km.diff_deny_all, M.diff_deny_all, vim.tbl_extend("force", map_opts, { desc = "Codex: deny all diffs" }))
   vim.keymap.set("n", km.select_model, M.select_model, vim.tbl_extend("force", map_opts, { desc = "Codex: select model" }))
+  vim.keymap.set("n", km.select_buffer, M.select_buffer, vim.tbl_extend("force", map_opts, { desc = "Codex: insert buffer content" }))
   vim.keymap.set("n", km.stop, terminal.stop, vim.tbl_extend("force", map_opts, { desc = "Codex: stop" }))
 end
 
@@ -162,6 +163,62 @@ function M.select_model()
   else
     vim.ui.input({ prompt = "Codex model: ", default = terminal.get_state().model or "" }, apply)
   end
+end
+
+local function buffer_items()
+  local items = {}
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr)
+        and vim.api.nvim_buf_is_loaded(bufnr)
+        and vim.fn.buflisted(bufnr) == 1
+        and vim.bo[bufnr].buftype ~= "terminal" then
+      local name = vim.api.nvim_buf_get_name(bufnr)
+      items[#items + 1] = {
+        bufnr = bufnr,
+        name = name == "" and "[No Name]" or vim.fn.fnamemodify(name, ":~:."),
+      }
+    end
+  end
+  return items
+end
+
+function M.send_buffer(bufnr)
+  if type(bufnr) ~= "number"
+      or not vim.api.nvim_buf_is_valid(bufnr)
+      or not vim.api.nvim_buf_is_loaded(bufnr) then
+    util.notify("The selected buffer is no longer available", vim.log.levels.WARN)
+    return false
+  end
+
+  local content = table.concat(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n")
+  if content == "" then
+    util.notify("The selected buffer is empty", vim.log.levels.WARN)
+    return false
+  end
+
+  -- Leave the content in Codex's input box so the user can add instructions
+  -- or review it before submitting.
+  return terminal.send(content, { submit = false })
+end
+
+function M.select_buffer()
+  local items = buffer_items()
+  if #items == 0 then
+    util.notify("No listed Neovim buffers are available", vim.log.levels.WARN)
+    return false
+  end
+
+  vim.ui.select(items, {
+    prompt = "Select a buffer to insert into Codex",
+    format_item = function(item)
+      return string.format("%d: %s", item.bufnr, item.name)
+    end,
+  }, function(item)
+    if item then
+      M.send_buffer(item.bufnr)
+    end
+  end)
+  return true
 end
 
 function M.status()

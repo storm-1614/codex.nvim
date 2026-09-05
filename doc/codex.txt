@@ -44,6 +44,7 @@ COMMANDS                                                       *codex-commands*
 :CodexSendText {text}   Send text; with ! do not press Enter.
 :CodexTreeAdd {file}    Send a file from a tree to Codex.
 :CodexSelectModel      Select a configured model or enter one.
+:CodexSelectBuffer     Choose a buffer and insert its contents into Codex.
 
 :CodexDiffAccept, :CodexDiffDeny, :CodexDiffAcceptAll,
 :CodexDiffDenyAll are compatibility commands. Codex CLI applies changes
@@ -64,6 +65,7 @@ Default mappings (when `keymaps.enabled` is true):
 <leader>aa / <leader>ad Accept / deny current diff compatibility action.
 <leader>aA / <leader>aD Accept / deny all diff compatibility action.
 <leader>am              Select model.
+<leader>ap              Choose a buffer and insert its contents into Codex.
 <leader>ax              Stop Codex.
 
 ==============================================================================

@@ -9,6 +9,7 @@ The interaction model and default `<leader>a*` key layout are inspired by [`code
 - Open Codex in a right or left vertical side panel
 - Reuse the same Codex session when the panel is hidden
 - Send the current file to Codex or reference a visual selection by file and line range
+- Choose a listed Neovim buffer and insert its current contents into Codex
 - Send arbitrary prompts from a command or Lua
 - Resume a prior Codex session from the built-in picker, or continue the most recent one
 - Select a model and pass it to the next Codex process
@@ -99,6 +100,7 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 | `<leader>ar` | Normal | Open Codex's session picker |
 | `<leader>aC` | Normal | Continue the most recent Codex session |
 | `<leader>am` | Normal | Select a model |
+| `<leader>ap` | Normal | Choose a buffer and insert its contents into Codex |
 | `<leader>ab` | Normal | Send the current file |
 | `<leader>ab` | Visual | Insert the selected file and line range |
 | `<leader>as` | Normal | Add the current file |
@@ -130,6 +132,7 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 :CodexSendText! partial text       " Send text without pressing Enter
 :CodexTreeAdd path/to/file.lua     " Send a file path from a file tree
 :CodexSelectModel                  " Select or enter a model
+:CodexSelectBuffer                 " Choose a buffer and insert its contents
 ```
 
 The diff compatibility commands are also available:
@@ -178,6 +181,7 @@ require("codex").setup({
     resume = "<leader>ar",
     continue_session = "<leader>aC",
     select_model = "<leader>am",
+    select_buffer = "<leader>ap",
     add_current = "<leader>ab",
     send = "<leader>as",
     tree_add = "<leader>as",
@@ -217,6 +221,14 @@ After selecting a model, the next Codex process is started with:
 ```text
 --model <selected-model>
 ```
+
+### Buffer input
+
+Use `:CodexSelectBuffer` (or `<leader>ap` by default) to select a listed,
+loaded Neovim buffer. Its current contents, including unsaved changes, are
+inserted into the Codex prompt without pressing Enter. This lets you add an
+instruction before submitting it. Terminal buffers are excluded from the
+picker.
 
 ### Testing
 
