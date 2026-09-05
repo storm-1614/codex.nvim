@@ -17,6 +17,19 @@ local defaults = {
   -- Give the interactive CLI time to render its first prompt before sending
   -- text to a newly created terminal.
   startup_delay_ms = 300,
+  -- Visual selections normally reference a file and line range. Include the
+  -- in-memory text when the buffer has unsaved changes so Codex sees the same
+  -- source the user sees.
+  selection = {
+    include_text = "if_modified", -- "never", "if_modified", or "always"
+    max_chars = 12000,
+  },
+  -- Bounds diagnostic context before it is sent to Codex. This avoids a noisy
+  -- language server or quickfix list overwhelming the prompt.
+  diagnostics = {
+    max_items = 50,
+    max_chars = 12000,
+  },
   terminal_win_opts = {
     number = false,
     relativenumber = false,
@@ -39,6 +52,8 @@ local defaults = {
     continue_session = "<leader>aC",
     select_model = "<leader>am",
     select_buffer = "<leader>ap",
+    diagnostics = "<leader>ae",
+    review = "<leader>aR",
     add_current = "<leader>ab",
     send = "<leader>as",
     tree_add = "<leader>as",
@@ -53,6 +68,25 @@ local defaults = {
   on_open = nil,
   on_close = nil,
   on_exit = nil,
+}
+
+local keymap_suffixes = {
+  toggle = "c",
+  focus = "f",
+  resume = "r",
+  continue_session = "C",
+  select_model = "m",
+  select_buffer = "p",
+  diagnostics = "e",
+  review = "R",
+  add_current = "b",
+  send = "s",
+  tree_add = "s",
+  diff_accept = "a",
+  diff_deny = "d",
+  diff_accept_all = "A",
+  diff_deny_all = "D",
+  stop = "x",
 }
 
 M.values = vim.deepcopy(defaults)
@@ -106,10 +140,57 @@ local function validate_models(models)
   end
 end
 
+local function validate_selection(selection)
+  assert_type("selection", selection, "table")
+  if selection.include_text ~= "never"
+      and selection.include_text ~= "if_modified"
+      and selection.include_text ~= "always" then
+    error("codex.nvim: selection.include_text must be 'never', 'if_modified', or 'always'")
+  end
+  assert_finite_number("selection.max_chars", selection.max_chars)
+  if selection.max_chars <= 0 or selection.max_chars % 1 ~= 0 then
+    error("codex.nvim: selection.max_chars must be a positive integer")
+  end
+end
+
+local function validate_diagnostics(diagnostics)
+  assert_type("diagnostics", diagnostics, "table")
+  for _, name in ipairs({ "max_items", "max_chars" }) do
+    assert_finite_number("diagnostics." .. name, diagnostics[name])
+    if diagnostics[name] <= 0 or diagnostics[name] % 1 ~= 0 then
+      error("codex.nvim: diagnostics." .. name .. " must be a positive integer")
+    end
+  end
+end
+
+local function apply_keymap_prefix(values, opts)
+  local configured_keymaps = opts.keymaps or {}
+  if configured_keymaps.prefix == nil then
+    return
+  end
+  for name, suffix in pairs(keymap_suffixes) do
+    if configured_keymaps[name] == nil then
+      values.keymaps[name] = values.keymaps.prefix .. suffix
+    end
+  end
+end
+
+local function validate_keymaps(keymaps)
+  assert_type("keymaps", keymaps, "table")
+  assert_boolean("keymaps.enabled", keymaps.enabled)
+  assert_type("keymaps.prefix", keymaps.prefix, "string")
+  for name in pairs(keymap_suffixes) do
+    if type(keymaps[name]) ~= "string" or keymaps[name] == "" then
+      error("codex.nvim: keymaps." .. name .. " must be a non-empty string")
+    end
+  end
+end
+
 function M.setup(opts)
   opts = opts or {}
   assert_type("setup options", opts, "table")
   local values = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts)
+  apply_keymap_prefix(values, opts)
 
   validate_command(values.terminal_cmd)
   if values.cwd ~= nil then
@@ -132,10 +213,11 @@ function M.setup(opts)
   if values.startup_delay_ms < 0 then
     error("codex.nvim: startup_delay_ms must be a non-negative number")
   end
+  validate_selection(values.selection)
+  validate_diagnostics(values.diagnostics)
   assert_type("terminal_win_opts", values.terminal_win_opts, "table")
   validate_models(values.models)
-  assert_type("keymaps", values.keymaps, "table")
-  assert_boolean("keymaps.enabled", values.keymaps.enabled)
+  validate_keymaps(values.keymaps)
   for _, callback_name in ipairs({ "on_open", "on_close", "on_exit" }) do
     local callback = values[callback_name]
     if callback ~= nil and type(callback) ~= "function" then

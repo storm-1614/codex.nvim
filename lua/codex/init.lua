@@ -6,41 +6,65 @@ local M = {
   terminal = terminal,
 }
 
+local installed_keymaps = {}
+
 local function selection_or_nil()
   return util.visual_selection()
 end
 
 function M.setup(opts)
   config.setup(opts)
+  M.clear_keymaps()
   if config.get().keymaps.enabled then
     M.setup_keymaps()
   end
 end
 
+function M.clear_keymaps()
+  for _, mapping in ipairs(installed_keymaps) do
+    pcall(vim.keymap.del, mapping.mode, mapping.lhs)
+  end
+  installed_keymaps = {}
+end
+
 function M.setup_keymaps()
+  M.clear_keymaps()
   local km = config.get().keymaps
   local map_opts = { silent = true, desc = "Codex" }
-  vim.keymap.set("n", km.toggle, terminal.toggle, vim.tbl_extend("force", map_opts, { desc = "Codex: toggle" }))
-  vim.keymap.set("n", km.focus, terminal.focus_toggle, vim.tbl_extend("force", map_opts, { desc = "Codex: focus" }))
-  vim.keymap.set("n", km.resume, M.resume, vim.tbl_extend("force", map_opts, { desc = "Codex: resume" }))
-  vim.keymap.set("n", km.continue_session, M.continue_session, vim.tbl_extend("force", map_opts, { desc = "Codex: continue" }))
-  vim.keymap.set({ "n", "v" }, km.add_current, function()
+  local function map(mode, lhs, rhs, desc)
+    vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", map_opts, { desc = desc }))
+    if type(mode) == "table" then
+      for _, item in ipairs(mode) do
+        installed_keymaps[#installed_keymaps + 1] = { mode = item, lhs = lhs }
+      end
+    else
+      installed_keymaps[#installed_keymaps + 1] = { mode = mode, lhs = lhs }
+    end
+  end
+
+  map("n", km.toggle, terminal.toggle, "Codex: toggle")
+  map("n", km.focus, terminal.focus_toggle, "Codex: focus")
+  map("n", km.resume, M.resume, "Codex: resume")
+  map("n", km.continue_session, M.continue_session, "Codex: continue")
+  map({ "n", "v" }, km.add_current, function()
     if vim.fn.mode():match("^[vV\22]") then
       return terminal.send_selection(selection_or_nil())
     end
     return terminal.send_current_file()
-  end, vim.tbl_extend("force", map_opts, { desc = "Codex: insert file/selection reference" }))
-  vim.keymap.set("v", km.send, function()
+  end, "Codex: insert file/selection reference")
+  map("v", km.send, function()
     return terminal.send_selection(selection_or_nil())
-  end, vim.tbl_extend("force", map_opts, { desc = "Codex: insert selection reference" }))
-  vim.keymap.set("n", km.tree_add, M.tree_add, vim.tbl_extend("force", map_opts, { desc = "Codex: add file" }))
-  vim.keymap.set("n", km.diff_accept, M.diff_accept, vim.tbl_extend("force", map_opts, { desc = "Codex: accept diff" }))
-  vim.keymap.set("n", km.diff_deny, M.diff_deny, vim.tbl_extend("force", map_opts, { desc = "Codex: deny diff" }))
-  vim.keymap.set("n", km.diff_accept_all, M.diff_accept_all, vim.tbl_extend("force", map_opts, { desc = "Codex: accept all diffs" }))
-  vim.keymap.set("n", km.diff_deny_all, M.diff_deny_all, vim.tbl_extend("force", map_opts, { desc = "Codex: deny all diffs" }))
-  vim.keymap.set("n", km.select_model, M.select_model, vim.tbl_extend("force", map_opts, { desc = "Codex: select model" }))
-  vim.keymap.set("n", km.select_buffer, M.select_buffer, vim.tbl_extend("force", map_opts, { desc = "Codex: insert buffer content" }))
-  vim.keymap.set("n", km.stop, terminal.stop, vim.tbl_extend("force", map_opts, { desc = "Codex: stop" }))
+  end, "Codex: insert selection reference")
+  map("n", km.tree_add, M.tree_add, "Codex: add file")
+  map("n", km.diff_accept, M.diff_accept, "Codex: accept diff")
+  map("n", km.diff_deny, M.diff_deny, "Codex: deny diff")
+  map("n", km.diff_accept_all, M.diff_accept_all, "Codex: accept all diffs")
+  map("n", km.diff_deny_all, M.diff_deny_all, "Codex: deny all diffs")
+  map("n", km.select_model, M.select_model, "Codex: select model")
+  map("n", km.select_buffer, M.select_buffer, "Codex: insert buffer content")
+  map("n", km.diagnostics, M.diagnostics, "Codex: diagnose current buffer")
+  map("n", km.review, M.review, "Codex: review workspace changes")
+  map("n", km.stop, terminal.stop, "Codex: stop")
 end
 
 function M.resume()
@@ -96,6 +120,35 @@ end
 
 function M.send_selection()
   return terminal.send_selection(selection_or_nil())
+end
+
+function M.diagnostics(opts)
+  opts = opts or {}
+  local bufnr = opts.all and nil or vim.api.nvim_get_current_buf()
+  local prompt, error_message = util.diagnostics_prompt(vim.diagnostic.get(bufnr))
+  if not prompt then
+    util.notify(error_message, vim.log.levels.INFO)
+    return false
+  end
+  return terminal.send(prompt)
+end
+
+function M.quickfix()
+  local list = vim.fn.getqflist({ items = 1 })
+  local prompt, error_message = util.quickfix_prompt(list.items)
+  if not prompt then
+    util.notify(error_message, vim.log.levels.INFO)
+    return false
+  end
+  return terminal.send(prompt)
+end
+
+function M.review()
+  return terminal.send(
+    "Review the current uncommitted workspace changes. Inspect the working tree and relevant diff yourself. "
+      .. "Do not modify files. Report only actionable findings, ordered by severity, with file and line references; "
+      .. "if there are no findings, say so briefly."
+  )
 end
 
 function M.add_current(file, start_line, end_line)

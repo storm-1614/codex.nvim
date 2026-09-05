@@ -32,6 +32,29 @@ assert_equal(sent[2], {
   opts = nil,
 }, "an unranged :CodexAdd must send the whole current file")
 
+local namespace = vim.api.nvim_create_namespace("codex-command-spec")
+vim.diagnostic.set(namespace, 0, {
+  { lnum = 1, col = 2, severity = vim.diagnostic.severity.ERROR, source = "test", message = "bad value" },
+})
+vim.cmd("CodexDiagnostics")
+assert_equal(sent[3], {
+  text = "Please diagnose these Neovim diagnostics. Inspect the relevant source before proposing a fix. Do not modify files yet.\n\nDiagnostics:\n- ERROR /tmp/codex-command-spec.lua:2:3 [test]: bad value",
+  opts = nil,
+}, ":CodexDiagnostics must send current-buffer diagnostics")
+
+vim.fn.setqflist({ { filename = "/tmp/codex-command-spec.lua", lnum = 3, col = 1, type = "W", text = "unused value" } })
+vim.cmd("CodexQuickfix")
+assert_equal(sent[4], {
+  text = "Please diagnose these Neovim diagnostics. Inspect the relevant source before proposing a fix. Do not modify files yet.\n\nDiagnostics:\n- WARN /tmp/codex-command-spec.lua:3:1: unused value",
+  opts = nil,
+}, ":CodexQuickfix must send the current quickfix list")
+
+vim.cmd("CodexReview")
+assert_equal(sent[5], {
+  text = "Review the current uncommitted workspace changes. Inspect the working tree and relevant diff yourself. Do not modify files. Report only actionable findings, ordered by severity, with file and line references; if there are no findings, say so briefly.",
+  opts = nil,
+}, ":CodexReview must request a non-mutating workspace review")
+
 local opened
 local original_open = terminal.open
 local original_is_running = terminal.is_running

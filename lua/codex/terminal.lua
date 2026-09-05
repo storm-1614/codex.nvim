@@ -2,33 +2,90 @@ local config = require("codex.config")
 local util = require("codex.util")
 
 local M = {}
-local state = {
-  buf = nil,
-  win = nil,
-  job = nil,
-  cwd = nil,
-  model = nil,
-  previous_win = nil,
-  starting = false,
-  pending_sends = {},
-}
 
-local function job_is_running()
-  return state.job and state.job > 0 and vim.fn.jobwait({ state.job }, 0)[1] == -1
+-- A terminal process belongs to the project it was started for. Keeping this
+-- state per cwd prevents a prompt from project B being sent to a live Codex
+-- process whose workspace is project A.
+local sessions = {}
+local state = nil
+
+local function new_state(key, cwd)
+  return {
+    key = key,
+    buf = nil,
+    win = nil,
+    job = nil,
+    cwd = cwd,
+    model = nil,
+    previous_win = nil,
+    starting = false,
+    pending_sends = {},
+  }
 end
 
-local function close_window()
-  if util.is_valid_win(state.win) then
-    vim.api.nvim_win_close(state.win, true)
+local function session_context()
+  local buf = vim.api.nvim_get_current_buf()
+  local key = vim.b[buf].codex_session_key
+  if key and sessions[key] then
+    return key, sessions[key].cwd
   end
-  state.win = nil
+
+  local cwd = util.cwd(config.get())
+  return vim.fn.fnamemodify(cwd, ":p"), cwd
 end
 
-local function cleanup_buffer()
-  if util.is_valid_buf(state.buf) and not job_is_running() then
-    vim.api.nvim_buf_delete(state.buf, { force = true })
+local function select_session(create)
+  local key, cwd = session_context()
+  local session = sessions[key]
+  if not session and create then
+    session = new_state(key, cwd)
+    sessions[key] = session
   end
-  state.buf = nil
+  if session then
+    state = session
+  end
+  return session
+end
+
+local function job_is_running(session)
+  session = session or state
+  return session and session.job and session.job > 0 and vim.fn.jobwait({ session.job }, 0)[1] == -1
+end
+
+local function is_open(session)
+  return session and util.is_valid_win(session.win) and util.is_valid_buf(session.buf)
+end
+
+local function restore_previous_window(session, was_current)
+  local previous_win = session.previous_win
+  session.previous_win = nil
+  if was_current and util.is_valid_win(previous_win) then
+    pcall(vim.api.nvim_set_current_win, previous_win)
+  end
+end
+
+local function close_window(session, restore_focus)
+  if not session then
+    return
+  end
+
+  local was_current = util.is_valid_win(session.win) and vim.api.nvim_get_current_win() == session.win
+  if util.is_valid_win(session.win) then
+    vim.api.nvim_win_close(session.win, true)
+  end
+  session.win = nil
+  if restore_focus then
+    restore_previous_window(session, was_current)
+  end
+end
+
+local function cleanup_buffer(session)
+  if session and util.is_valid_buf(session.buf) and not job_is_running(session) then
+    vim.api.nvim_buf_delete(session.buf, { force = true })
+  end
+  if session then
+    session.buf = nil
+  end
 end
 
 local function apply_window_options(win, opts)
@@ -37,25 +94,25 @@ local function apply_window_options(win, opts)
   end
 end
 
-local send_payload
-
-local function clear_pending_sends()
-  state.pending_sends = {}
+local function clear_pending_sends(session)
+  session.pending_sends = {}
 end
 
-local function flush_pending_sends(job)
-  if state.job ~= job or not job_is_running() then
-    clear_pending_sends()
+local send_payload
+
+local function flush_pending_sends(session, job)
+  if session.job ~= job or not job_is_running(session) then
+    clear_pending_sends(session)
     return
   end
 
-  local pending = state.pending_sends
-  clear_pending_sends()
+  local pending = session.pending_sends
+  clear_pending_sends(session)
   for _, request in ipairs(pending) do
-    if state.job ~= job or not job_is_running() then
+    if session.job ~= job or not job_is_running(session) then
       break
     end
-    send_payload(request.text, request.opts)
+    send_payload(session, request.text, request.opts)
   end
 end
 
@@ -73,59 +130,46 @@ local function create_window()
   return win
 end
 
-local function terminal_exit(job, code, _)
+local function terminal_exit(session, job, code, _)
   vim.schedule(function()
-    -- Ignore an old process callback after the user has stopped it and
-    -- launched a new terminal.
-    if state.job ~= job then
+    -- Ignore an old process callback after this project's terminal has been
+    -- stopped and started again.
+    if session.job ~= job then
       return
     end
-    local exited_buf = state.buf
-    state.job = nil
-    state.starting = false
-    clear_pending_sends()
+
+    local exited_buf = session.buf
+    session.job = nil
+    session.starting = false
+    clear_pending_sends(session)
     if config.get().on_exit then
-      pcall(config.get().on_exit, vim.deepcopy(state), code)
+      pcall(config.get().on_exit, vim.deepcopy(session), code)
     end
     if config.get().auto_close then
-      close_window()
+      close_window(session, true)
       if util.is_valid_buf(exited_buf) then
         vim.api.nvim_buf_delete(exited_buf, { force = true })
       end
-      state.buf = nil
-    else
-      if util.is_valid_buf(exited_buf) then
-        vim.bo[exited_buf].modified = false
-      end
+      session.buf = nil
+    elseif util.is_valid_buf(exited_buf) then
+      vim.bo[exited_buf].modified = false
     end
   end)
 end
 
-local function build_command(extra_args)
+local function build_command(session, extra_args)
   local cfg = config.get()
   local command = util.command_list(cfg.terminal_cmd)
-  if state.model and state.model ~= "" then
-    vim.list_extend(command, { "--model", state.model })
+  if session.model and session.model ~= "" then
+    vim.list_extend(command, { "--model", session.model })
   end
   vim.list_extend(command, extra_args or {})
   return command
 end
 
-function M.get_state()
-  return state
-end
-
-function M.is_open()
-  return util.is_valid_win(state.win) and util.is_valid_buf(state.buf)
-end
-
-function M.is_running()
-  return job_is_running()
-end
-
-function M.focus()
-  if M.is_open() then
-    vim.api.nvim_set_current_win(state.win)
+local function focus_session(session)
+  if is_open(session) then
+    vim.api.nvim_set_current_win(session.win)
     if config.get().enter_insert then
       vim.cmd("startinsert")
     end
@@ -134,65 +178,91 @@ function M.focus()
   return false
 end
 
+function M.get_state()
+  return select_session(true)
+end
+
+function M.get_sessions()
+  return sessions
+end
+
+function M.is_open()
+  return is_open(select_session(false))
+end
+
+function M.is_running()
+  return job_is_running(select_session(false))
+end
+
+function M.focus()
+  return focus_session(select_session(false))
+end
+
 function M.open(extra_args)
-  if M.is_open() and job_is_running() then
-    M.focus()
+  local session = select_session(true)
+  if is_open(session) and job_is_running(session) then
+    focus_session(session)
     return true
   end
 
-  if job_is_running() and util.is_valid_buf(state.buf) then
+  if job_is_running(session) and util.is_valid_buf(session.buf) then
     -- `close()` hides the split but intentionally keeps the CLI alive. Reuse
     -- that terminal buffer instead of starting a second Codex process.
-    state.win = create_window()
-    vim.api.nvim_win_set_buf(state.win, state.buf)
+    session.previous_win = vim.api.nvim_get_current_win()
+    session.win = create_window()
+    vim.api.nvim_win_set_buf(session.win, session.buf)
     if config.get().enter_insert then
       vim.cmd("startinsert")
     end
     return true
   end
 
-  if util.is_valid_buf(state.buf) and not job_is_running() then
-    cleanup_buffer()
+  if util.is_valid_buf(session.buf) and not job_is_running(session) then
+    cleanup_buffer(session)
   end
 
-  state.previous_win = vim.api.nvim_get_current_win()
-  state.cwd = util.cwd(config.get())
-  clear_pending_sends()
-  state.win = create_window()
-  state.buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_name(state.buf, "[Codex]")
-  vim.api.nvim_win_set_buf(state.win, state.buf)
-  vim.bo[state.buf].bufhidden = "hide"
-  vim.bo[state.buf].swapfile = false
-  vim.bo[state.buf].filetype = "codex_terminal"
+  session.cwd = util.cwd(config.get())
+  session.previous_win = vim.api.nvim_get_current_win()
+  clear_pending_sends(session)
+  session.win = create_window()
+  session.buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_name(session.buf, "[Codex: " .. session.cwd .. "]")
+  vim.b[session.buf].codex_session_key = session.key
+  vim.api.nvim_win_set_buf(session.win, session.buf)
+  vim.bo[session.buf].bufhidden = "hide"
+  vim.bo[session.buf].swapfile = false
+  vim.bo[session.buf].filetype = "codex_terminal"
 
   local term_opts = {
-    cwd = state.cwd,
-    on_exit = terminal_exit,
+    cwd = session.cwd,
+    on_exit = function(job, code, event)
+      terminal_exit(session, job, code, event)
+    end,
   }
   if config.get().env and next(config.get().env) ~= nil then
     term_opts.env = config.get().env
   end
-  local job = vim.fn.termopen(build_command(extra_args), term_opts)
+  local job = vim.fn.termopen(build_command(session, extra_args), term_opts)
   if job <= 0 then
-    close_window()
-    vim.api.nvim_buf_delete(state.buf, { force = true })
-    state.buf = nil
-    state.job = nil
+    close_window(session, true)
+    vim.api.nvim_buf_delete(session.buf, { force = true })
+    session.buf = nil
+    session.job = nil
     util.notify("Unable to start Codex CLI; verify that terminal_cmd is executable: " .. vim.inspect(config.get().terminal_cmd), vim.log.levels.ERROR)
     return false
   end
-  state.job = job
-  state.starting = true
+
+  session.job = job
+  session.starting = true
   vim.defer_fn(function()
-    if state.job == job then
-      state.starting = false
-      flush_pending_sends(job)
+    if session.job == job then
+      session.starting = false
+      flush_pending_sends(session, job)
     end
   end, config.get().startup_delay_ms)
 
   if config.get().on_open then
-    pcall(config.get().on_open, vim.deepcopy(state))
+    pcall(config.get().on_open, vim.deepcopy(session))
   end
   if config.get().enter_insert then
     vim.cmd("startinsert")
@@ -201,69 +271,77 @@ function M.open(extra_args)
 end
 
 function M.close()
-  if not M.is_open() then
+  local session = select_session(false)
+  if not is_open(session) then
     return false
   end
-  close_window()
+  close_window(session, true)
   if config.get().on_close then
-    pcall(config.get().on_close, vim.deepcopy(state))
+    pcall(config.get().on_close, vim.deepcopy(session))
   end
   return true
 end
 
 function M.stop()
-  if state.job and state.job > 0 then
-    vim.fn.jobstop(state.job)
-    state.job = nil
+  local session = select_session(false)
+  if not session then
+    return false
   end
-  state.starting = false
-  clear_pending_sends()
-  close_window()
-  cleanup_buffer()
+  if session.job and session.job > 0 then
+    vim.fn.jobstop(session.job)
+    session.job = nil
+  end
+  session.starting = false
+  clear_pending_sends(session)
+  close_window(session, true)
+  cleanup_buffer(session)
   if config.get().on_close then
-    pcall(config.get().on_close, vim.deepcopy(state))
+    pcall(config.get().on_close, vim.deepcopy(session))
   end
+  return true
 end
 
 function M.toggle()
-  if M.is_open() then
+  local session = select_session(false)
+  if is_open(session) then
     return M.close()
   end
   return M.open()
 end
 
 function M.focus_toggle()
-  if M.is_open() then
-    if vim.api.nvim_get_current_win() == state.win then
+  local session = select_session(false)
+  if is_open(session) then
+    if vim.api.nvim_get_current_win() == session.win then
       return M.close()
     end
-    return M.focus()
+    return focus_session(session)
   end
   return M.open()
 end
 
 local function paste_payload(text)
-  -- Codex uses a terminal line editor. Bracketed paste keeps newlines inside a
-  -- multi-line prompt from being interpreted as individual submit events.
-  if text:find("\n", 1, true) then
+  -- Codex uses a terminal line editor. Bracketed paste keeps newlines and tabs
+  -- inside pasted source from being interpreted as individual UI key presses.
+  if text:find("[\n\t]") then
     return "\27[200~" .. text .. "\27[201~"
   end
   return text
 end
 
-local function terminal_channel()
-  if not util.is_valid_buf(state.buf) then
+local function terminal_channel(session)
+  if not util.is_valid_buf(session.buf) then
     return nil
   end
 
   -- Match claudecode.nvim: prefer the terminal buffer's job id and use the
   -- buffer channel as a fallback for recovered terminal buffers.
-  local channel = vim.b[state.buf] and vim.b[state.buf].terminal_job_id
+  local channel = vim.b[session.buf] and vim.b[session.buf].terminal_job_id
   if not channel or channel == 0 then
-    channel = vim.bo[state.buf].channel
+    channel = vim.bo[session.buf].channel
   end
-  if (not channel or channel == 0) and state.job and state.job > 0 then
-    channel = state.job
+  if (not channel or channel == 0) and session.job and session.job > 0 then
+    channel = session.job
   end
   return channel
 end
@@ -277,8 +355,8 @@ local function send_channel(channel, payload)
   return true
 end
 
-send_payload = function(text, opts)
-  local channel = terminal_channel()
+send_payload = function(session, text, opts)
+  local channel = terminal_channel(session)
   if not channel or channel == 0 then
     util.notify("Unable to send text to Codex CLI: terminal channel is unavailable", vim.log.levels.ERROR)
     return false
@@ -296,7 +374,7 @@ send_payload = function(text, opts)
   end
 
   if opts.focus ~= false and config.get().focus_after_send then
-    M.focus()
+    focus_session(session)
   end
   return true
 end
@@ -308,8 +386,9 @@ function M.send(text, opts)
     return false
   end
 
-  local was_running = M.is_running()
-  local needs_open = not M.is_open() or not was_running
+  local session = select_session(true)
+  local was_running = job_is_running(session)
+  local needs_open = not is_open(session) or not was_running
   if needs_open then
     -- Selection insertion must also work before Codex has been opened.
     if not M.open() then
@@ -317,44 +396,23 @@ function M.send(text, opts)
     end
   end
 
-  if state.starting then
+  if session.starting then
     -- A newly spawned TUI may redraw its input area while starting. Keep all
     -- requests in one FIFO queue so a second send during this interval does
     -- not incur another full delay or overtake the first prompt.
-    state.pending_sends[#state.pending_sends + 1] = { text = text, opts = opts }
+    session.pending_sends[#session.pending_sends + 1] = { text = text, opts = opts }
     return true
   end
 
-  return send_payload(text, opts)
+  return send_payload(session, text, opts)
 end
 
 function M.send_selection(selection)
-  selection = selection or util.visual_selection()
-  if not selection or not selection.lines or #selection.lines == 0 then
-    util.notify("Select text to insert into Codex first", vim.log.levels.WARN)
+  local prompt, error_message = util.selection_prompt(selection)
+  if not prompt then
+    util.notify(error_message, vim.log.levels.WARN)
     return false
   end
-
-  local file = selection.file or util.current_file()
-  if not file then
-    util.notify("The selected buffer has no file name", vim.log.levels.WARN)
-    return false
-  end
-
-  local start_line = selection.start_line
-  local end_line = selection.end_line or start_line
-  if not start_line or start_line < 1 or not end_line or end_line < start_line then
-    util.notify("The selected text has no valid line range", vim.log.levels.WARN)
-    return false
-  end
-
-  local location = vim.fn.fnamemodify(vim.fn.expand(file), ":p")
-  local prompt = string.format(
-    "Please inspect and process this file (lines %d-%d): %s",
-    start_line,
-    end_line,
-    location
-  )
   return M.send(prompt, { submit = false })
 end
 

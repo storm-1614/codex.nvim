@@ -39,6 +39,9 @@ COMMANDS                                                       *codex-commands*
 :CodexClose            Hide the side panel but keep the process alive.
 :CodexStop             Stop Codex and close the side panel.
 :CodexStatus           Show process status.
+:CodexDiagnostics      Send current-buffer diagnostics; use ! for all buffers.
+:CodexQuickfix         Send the current quickfix list to Codex.
+:CodexReview           Ask Codex to review workspace changes without editing.
 :CodexAdd              Send the current file; an Ex range adds line context.
 :CodexSend {prompt}    Send a prompt to Codex.
 :CodexSendText {text}   Send text; with ! do not press Enter.
@@ -60,6 +63,8 @@ Default mappings (when `keymaps.enabled` is true):
 <leader>af              Focus/toggle side panel.
 <leader>ar              Open Codex's session picker.
 <leader>aC              Continue the most recent session.
+<leader>ae              Send current-buffer diagnostics to Codex.
+<leader>aR              Review current workspace changes without editing.
 <leader>ab              Send current file or insert a visual selection reference.
 <leader>as              Insert the selected file and line range into the Codex prompt.
 <leader>aa / <leader>ad Accept / deny current diff compatibility action.
@@ -80,5 +85,15 @@ split_side              "left" or "right", default: "right".
 split_width_percentage  Side panel width fraction, default: 0.35.
 auto_close              Close panel after CLI exit, default: true.
 startup_delay_ms        Delay before the first send to a new CLI, default: 300.
+selection.include_text  Include selected in-memory text: "never",
+                        "if_modified" (default), or "always".
+selection.max_chars     Maximum selected in-memory characters, default: 12000.
+diagnostics.max_items   Maximum diagnostic/quickfix entries, default: 50.
+diagnostics.max_chars   Maximum diagnostic/quickfix characters, default: 12000.
 models                  Values shown by :CodexSelectModel.
 keymaps                 Keymap names and enabled flag.
+
+Codex terminals are isolated by working directory. With the default
+selection.include_text="if_modified", a visual selection from a modified
+buffer also includes its current in-memory text so Codex does not read stale
+on-disk source.

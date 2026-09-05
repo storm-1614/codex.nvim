@@ -21,6 +21,11 @@ command("CodexFocus", codex.focus, { desc = "Focus Codex side panel" })
 command("CodexClose", codex.close, { desc = "Close Codex side panel" })
 command("CodexStop", codex.stop, { desc = "Stop Codex CLI" })
 command("CodexStatus", codex.status, { desc = "Show Codex status" })
+command("CodexDiagnostics", function(args)
+  codex.diagnostics({ all = args.bang })
+end, { bang = true, desc = "Send Neovim diagnostics to Codex (!: all buffers)" })
+command("CodexQuickfix", codex.quickfix, { desc = "Send the quickfix list to Codex" })
+command("CodexReview", codex.review, { desc = "Ask Codex to review uncommitted workspace changes" })
 command("CodexAdd", function(args)
   local file = args.fargs[1]
   -- `line1` and `line2` default to the current line even when no Ex range was

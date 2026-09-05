@@ -7,9 +7,13 @@ The interaction model and default `<leader>a*` key layout are inspired by [`code
 ### Features
 
 - Open Codex in a right or left vertical side panel
-- Reuse the same Codex session when the panel is hidden
+- Reuse an independent Codex session for each project working directory
 - Send the current file to Codex or reference a visual selection by file and line range
+- Include the in-memory text of a modified visual selection, so unsaved changes are not lost
 - Choose a listed Neovim buffer and insert its current contents into Codex
+- Send current-buffer/all-buffer diagnostics or the quickfix list as bounded context
+- Ask Codex for a non-mutating review of the current workspace changes
+- Provide a Neo-tree mapping example for sending the selected file to Codex
 - Send arbitrary prompts from a command or Lua
 - Resume a prior Codex session from the built-in picker, or continue the most recent one
 - Select a model and pass it to the next Codex process
@@ -101,6 +105,8 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 | `<leader>aC` | Normal | Continue the most recent Codex session |
 | `<leader>am` | Normal | Select a model |
 | `<leader>ap` | Normal | Choose a buffer and insert its contents into Codex |
+| `<leader>ae` | Normal | Send current-buffer diagnostics to Codex |
+| `<leader>aR` | Normal | Review current workspace changes without editing |
 | `<leader>ab` | Normal | Send the current file |
 | `<leader>ab` | Visual | Insert the selected file and line range |
 | `<leader>as` | Normal | Add the current file |
@@ -123,6 +129,10 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 :CodexClose                        " Hide the panel, keep the process alive
 :CodexStop                         " Stop Codex and close the panel
 :CodexStatus                       " Show Codex status
+:CodexDiagnostics                  " Send current-buffer diagnostics to Codex
+:CodexDiagnostics!                 " Send diagnostics from all buffers to Codex
+:CodexQuickfix                     " Send the quickfix list to Codex
+:CodexReview                       " Ask Codex to review workspace changes without editing
 :CodexResume                       " Open Codex's session picker
 :CodexContinue                     " Continue the latest session
 :CodexAdd                          " Send the current file
@@ -162,6 +172,14 @@ require("codex").setup({
   auto_close = true,
   focus_after_send = true,
   startup_delay_ms = 300,             -- settle the TUI before flushing queued sends
+  selection = {
+    include_text = "if_modified",    -- "never", "if_modified", or "always"
+    max_chars = 12000,                -- bound in-memory selection context
+  },
+  diagnostics = {
+    max_items = 50,                   -- bound diagnostic / quickfix entries
+    max_chars = 12000,                -- bound diagnostic / quickfix context
+  },
 
   terminal_win_opts = {
     number = false,
@@ -176,12 +194,15 @@ require("codex").setup({
 
   keymaps = {
     enabled = true,
+    prefix = "<leader>a",            -- used for omitted mappings below
     toggle = "<leader>ac",
     focus = "<leader>af",
     resume = "<leader>ar",
     continue_session = "<leader>aC",
     select_model = "<leader>am",
     select_buffer = "<leader>ap",
+    diagnostics = "<leader>ae",
+    review = "<leader>aR",
     add_current = "<leader>ab",
     send = "<leader>as",
     tree_add = "<leader>as",
@@ -229,6 +250,52 @@ loaded Neovim buffer. Its current contents, including unsaved changes, are
 inserted into the Codex prompt without pressing Enter. This lets you add an
 instruction before submitting it. Terminal buffers are excluded from the
 picker.
+
+### Visual-selection context
+
+Visual selections always include their file path and line range. With the
+default `selection.include_text = "if_modified"`, a selection from a modified
+buffer also includes its current in-memory text in the Codex prompt. This keeps
+Codex from reading stale on-disk source. Set `include_text = "never"` to keep
+path-and-line references only, or `"always"` to send the selected text even for
+saved buffers. `max_chars` bounds the pasted source and reports truncation in
+the prompt.
+
+### Project sessions
+
+Codex terminals are isolated by their working directory (the current Git root
+by default). Switching between repositories opens or focuses that repository's
+own Codex process, so prompts are not sent to a session from another project.
+
+### Diagnostics and review
+
+`:CodexDiagnostics` sends diagnostics from the current buffer; use `!` to
+include all available Neovim diagnostics. `:CodexQuickfix` sends the active
+quickfix list. Both use the `diagnostics` limits above and ask Codex to inspect
+the source before proposing a fix.
+
+`:CodexReview` asks the running Codex CLI to inspect current workspace changes
+and report findings only. The plugin does not execute `git` or edit files for
+this command.
+
+### Neo-tree
+
+Add the following mapping inside Neo-tree's `window.mappings` to send its
+selected file to Codex. It intentionally ignores directories.
+
+```lua
+["<leader>as"] = {
+  function(state)
+    local node = state.tree:get_node()
+    if node.type == "file" then
+      require("codex").tree_add(node.path)
+    else
+      vim.notify("Select a file in Neo-tree first", vim.log.levels.WARN)
+    end
+  end,
+  desc = "Send selected file to Codex",
+},
+```
 
 ### Testing
 
