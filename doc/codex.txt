@@ -39,6 +39,7 @@ COMMANDS                                                       *codex-commands*
 :CodexClose            Hide the side panel but keep the process alive.
 :CodexStop             Stop Codex and close the side panel.
 :CodexStatus           Show process status.
+:CodexHealth           Check CLI, current project directory, and session status.
 :CodexDiagnostics      Send current-buffer diagnostics; use ! for all buffers.
 :CodexQuickfix         Send the current quickfix list to Codex.
 :CodexReview           Ask Codex to review workspace changes without editing.
@@ -65,6 +66,7 @@ Default mappings (when `keymaps.enabled` is true):
 <leader>aC              Continue the most recent session.
 <leader>ae              Send current-buffer diagnostics to Codex.
 <leader>aR              Review current workspace changes without editing.
+<leader>ah              Check CLI, current project directory, and session state.
 <leader>ab              Send current file or insert a visual selection reference.
 <leader>as              Insert the selected file and line range into the Codex prompt.
 <leader>aa / <leader>ad Accept / deny current diff compatibility action.

@@ -182,6 +182,12 @@ function M.get_state()
   return select_session(true)
 end
 
+-- Unlike get_state(), this does not allocate state for a project that has
+-- never opened a Codex terminal. It is useful for read-only status checks.
+function M.peek_state()
+  return select_session(false)
+end
+
 function M.get_sessions()
   return sessions
 end

@@ -64,6 +64,7 @@ function M.setup_keymaps()
   map("n", km.select_buffer, M.select_buffer, "Codex: insert buffer content")
   map("n", km.diagnostics, M.diagnostics, "Codex: diagnose current buffer")
   map("n", km.review, M.review, "Codex: review workspace changes")
+  map("n", km.health, M.health, "Codex: health check")
   map("n", km.stop, terminal.stop, "Codex: stop")
 end
 
@@ -149,6 +150,72 @@ function M.review()
       .. "Do not modify files. Report only actionable findings, ordered by severity, with file and line references; "
       .. "if there are no findings, say so briefly."
   )
+end
+
+local function terminal_command_status()
+  local command = util.command_list(config.get().terminal_cmd)
+  local executable = command[1]
+  local available = vim.fn.executable(executable) == 1
+  local path = available and vim.fn.exepath(executable) or ""
+  return {
+    command = table.concat(command, " "),
+    executable = executable,
+    path = path ~= "" and path or executable,
+    available = available,
+  }
+end
+
+local function working_directory_status()
+  local cwd = util.cwd(config.get())
+  local uv = vim.uv or vim.loop
+  local stat = uv.fs_stat(cwd)
+  return {
+    path = cwd,
+    available = stat ~= nil and stat.type == "directory",
+  }
+end
+
+-- Return a structured, side-effect-free status report for the current project.
+function M.health_report()
+  local cli = terminal_command_status()
+  local cwd = working_directory_status()
+  local session = terminal.peek_state()
+  local running = terminal.is_running()
+  local open = terminal.is_open()
+  return {
+    ok = cli.available and cwd.available,
+    cli = cli,
+    cwd = cwd,
+    session = {
+      started = session ~= nil,
+      running = running,
+      open = open,
+    },
+  }
+end
+
+function M.health()
+  local report = M.health_report()
+  local cli_mark = report.cli.available and "✓" or "✗"
+  local cwd_mark = report.cwd.available and "✓" or "✗"
+  local session_status
+  if report.session.running then
+    session_status = report.session.open and "运行中，侧栏已打开" or "运行中，侧栏已隐藏"
+  elseif report.session.started then
+    session_status = "已停止"
+  else
+    session_status = "尚未为当前项目启动"
+  end
+
+  local lines = {
+    "Codex 健康检查",
+    string.format("%s CLI: %s (%s)", cli_mark, report.cli.command, report.cli.path),
+    string.format("%s 工作目录: %s", cwd_mark, report.cwd.path),
+    "• 当前会话: " .. session_status,
+    "• 登录状态: 为避免读取凭据，本检查不探测；首次启动时由 Codex CLI 确认。",
+  }
+  util.notify(table.concat(lines, "\n"), report.ok and vim.log.levels.INFO or vim.log.levels.WARN)
+  return report.ok, report
 end
 
 function M.add_current(file, start_line, end_line)

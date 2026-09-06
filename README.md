@@ -107,6 +107,7 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 | `<leader>ap` | Normal | Choose a buffer and insert its contents into Codex |
 | `<leader>ae` | Normal | Send current-buffer diagnostics to Codex |
 | `<leader>aR` | Normal | Review current workspace changes without editing |
+| `<leader>ah` | Normal | Check Codex CLI, project directory, and session health |
 | `<leader>ab` | Normal | Send the current file |
 | `<leader>ab` | Visual | Insert the selected file and line range |
 | `<leader>as` | Normal | Add the current file |
@@ -129,6 +130,7 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 :CodexClose                        " Hide the panel, keep the process alive
 :CodexStop                         " Stop Codex and close the panel
 :CodexStatus                       " Show Codex status
+:CodexHealth                       " Check CLI, current project directory, and session status
 :CodexDiagnostics                  " Send current-buffer diagnostics to Codex
 :CodexDiagnostics!                 " Send diagnostics from all buffers to Codex
 :CodexQuickfix                     " Send the quickfix list to Codex
@@ -203,6 +205,7 @@ require("codex").setup({
     select_buffer = "<leader>ap",
     diagnostics = "<leader>ae",
     review = "<leader>aR",
+    health = "<leader>ah",
     add_current = "<leader>ab",
     send = "<leader>as",
     tree_add = "<leader>as",
@@ -277,6 +280,12 @@ the source before proposing a fix.
 `:CodexReview` asks the running Codex CLI to inspect current workspace changes
 and report findings only. The plugin does not execute `git` or edit files for
 this command.
+
+### Health check
+
+Use `:CodexHealth` (or `<leader>ah`) to verify the configured CLI executable,
+the current project's resolved working directory, and the matching Codex
+terminal's state. It does not start Codex or inspect authentication credentials.
 
 ### Neo-tree
 
