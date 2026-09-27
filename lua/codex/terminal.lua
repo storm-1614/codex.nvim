@@ -116,6 +116,72 @@ local function flush_pending_sends(session, job)
   end
 end
 
+-- TUI startup (including trust/login screens) may discard early stdin. A
+-- running PTY or EnableBracketedPaste alone does not mean the composer exists.
+local function observe_startup(session, job, data)
+  local startup = session.startup
+  if session.job ~= job or not session.starting or not startup then
+    return
+  end
+  local output = startup.tail .. table.concat(data, "\n")
+  for parameters, action in output:gmatch("\27%[%?([%d;]+)([hl])") do
+    for mode in parameters:gmatch("%d+") do
+      if mode == "2004" then
+        startup.paste = action == "h"
+      elseif mode == "25" then
+        startup.cursor = action == "h"
+      end
+    end
+  end
+  -- Mode sequences can be split across stdout callbacks.
+  startup.tail = output:sub(-32)
+end
+
+local function composer_visible(session)
+  local startup = session.startup
+  if not startup or not startup.paste or not startup.cursor or not util.is_valid_buf(session.buf) then
+    return false
+  end
+  local height = util.is_valid_win(session.win) and vim.api.nvim_win_get_height(session.win) or vim.o.lines
+  local count = vim.api.nvim_buf_line_count(session.buf)
+  local lines = vim.api.nvim_buf_get_lines(session.buf, math.max(0, count - height), count, false)
+  for _, line in ipairs(lines) do
+    -- Codex also uses this arrow for numbered menu choices. Those are not an
+    -- editable prompt, even if an older cursor-show sequence is still visible.
+    if line:match("^%s*›") and not line:match("^%s*›%s*%d+%.") then
+      return true
+    end
+  end
+  return false
+end
+
+local function wait_for_composer(session, job)
+  local startup = session.startup
+  if session.job ~= job or not session.starting or not startup or not job_is_running(session) then
+    return
+  end
+  local now = (vim.uv or vim.loop).hrtime() / 1e6
+  if composer_visible(session) then
+    startup.ready_since = startup.ready_since or now
+    if now - startup.ready_since >= config.get().startup_delay_ms then
+      session.starting = false
+      session.startup = nil
+      flush_pending_sends(session, job)
+      return
+    end
+  else
+    startup.ready_since = nil
+  end
+  local overdue = now - startup.started_at >= 10000
+  if overdue and not startup.warned and #session.pending_sends > 0 then
+    startup.warned = true
+    util.notify("Codex is not ready for input yet. Complete any startup dialog; queued text is retained.", vim.log.levels.WARN)
+  end
+  vim.defer_fn(function()
+    wait_for_composer(session, job)
+  end, overdue and 250 or 50)
+end
+
 local function create_window()
   local side = config.get().split_side
   if side == "left" then
@@ -141,6 +207,7 @@ local function terminal_exit(session, job, code, _)
     local exited_buf = session.buf
     session.job = nil
     session.starting = false
+    session.startup = nil
     clear_pending_sends(session)
     if config.get().on_exit then
       pcall(config.get().on_exit, vim.deepcopy(session), code)
@@ -241,6 +308,9 @@ function M.open(extra_args)
 
   local term_opts = {
     cwd = session.cwd,
+    on_stdout = function(job, data)
+      observe_startup(session, job, data)
+    end,
     on_exit = function(job, code, event)
       terminal_exit(session, job, code, event)
     end,
@@ -260,12 +330,13 @@ function M.open(extra_args)
 
   session.job = job
   session.starting = true
+  session.startup = {
+    tail = "", paste = false, cursor = false,
+    started_at = (vim.uv or vim.loop).hrtime() / 1e6,
+  }
   vim.defer_fn(function()
-    if session.job == job then
-      session.starting = false
-      flush_pending_sends(session, job)
-    end
-  end, config.get().startup_delay_ms)
+    wait_for_composer(session, job)
+  end, 50)
 
   if config.get().on_open then
     pcall(config.get().on_open, vim.deepcopy(session))
@@ -298,6 +369,7 @@ function M.stop()
     session.job = nil
   end
   session.starting = false
+  session.startup = nil
   clear_pending_sends(session)
   close_window(session, true)
   cleanup_buffer(session)
@@ -369,14 +441,21 @@ send_payload = function(session, text, opts)
   end
 
   local payload = paste_payload(text)
-  if opts.submit ~= false then
-    -- Keep the submit byte in the same write, after the closing paste marker.
-    -- This prevents a separate delayed event from unexpectedly submitting a
-    -- visual selection.
-    payload = payload .. "\r"
-  end
   if not send_channel(channel, payload) then
     return false
+  end
+
+  if opts.submit ~= false then
+    -- Codex handles bracketed paste asynchronously. Sending Enter in the same
+    -- PTY write can make the TUI consume it as part of the paste, leaving the
+    -- composer stuck in its pasted-content state. Submit as a separate key
+    -- event after the paste has had a chance to be processed.
+    local job = session.job
+    vim.defer_fn(function()
+      if session.job == job and job_is_running(session) then
+        send_channel(channel, "\r")
+      end
+    end, 50)
   end
 
   if opts.focus ~= false and config.get().focus_after_send then
@@ -396,6 +475,11 @@ function M.send(text, opts)
   local was_running = job_is_running(session)
   local needs_open = not is_open(session) or not was_running
   if needs_open then
+    if not was_running and opts.submit ~= false then
+      -- Codex accepts an initial prompt as a positional CLI argument. Using
+      -- that path avoids racing the TUI's startup gates with PTY input.
+      return M.open({ "--", text })
+    end
     -- Selection insertion must also work before Codex has been opened.
     if not M.open() then
       return false

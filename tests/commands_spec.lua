@@ -71,6 +71,17 @@ assert_equal(opened, { "resume" }, "resume must not skip the session picker")
 assert(codex.continue_session(), "continue must open the latest session")
 assert_equal(opened, { "resume", "--last" }, "continue must target the latest session")
 
+assert(codex.open({ "inspect", "this" }), "a cold :Codex prompt must launch successfully")
+assert_equal(opened, { "--", "inspect this" }, "a cold :Codex prompt must use Codex's initial prompt argument")
+assert_equal(#sent, 5, "a cold :Codex prompt must not also be written into the PTY")
+
+terminal.is_running = function()
+  return true
+end
+assert(codex.open({ "follow", "up" }), "a prompt for a running session must send successfully")
+assert(opened == nil, "a running session must reopen without CLI prompt arguments")
+assert_equal(sent[6], { text = "follow up", opts = nil }, "a running session must receive the prompt over the TUI input")
+
 terminal.send = original_send
 terminal.open = original_open
 terminal.is_running = original_is_running

@@ -14,8 +14,8 @@ local defaults = {
   enter_insert = true,
   auto_close = true,
   focus_after_send = true,
-  -- Give the interactive CLI time to render its first prompt before sending
-  -- text to a newly created terminal.
+  -- Wait this long after an editable Codex composer is visible before
+  -- flushing startup text. Startup dialogs keep the text queued.
   startup_delay_ms = 300,
   -- Visual selections normally reference a file and line range. Include the
   -- in-memory text when the buffer has unsaved changes so Codex sees the same

@@ -29,6 +29,12 @@ vim.b[buffer].terminal_job_id = 42
 local original_jobwait = vim.fn.jobwait
 local original_chansend = vim.fn.chansend
 local original_defer_fn = vim.defer_fn
+local uv = vim.uv or vim.loop
+local original_hrtime = uv.hrtime
+local clock = 0
+uv.hrtime = function()
+  return clock
+end
 local sent = {}
 local deferred = {}
 
@@ -48,11 +54,16 @@ assert(ok, "multi-line text must be sent successfully")
 assert_equal(sent, {
   {
     channel = 42,
-    payload = "\27[200~first line\nsecond line\27[201~\r",
+    payload = "\27[200~first line\nsecond line\27[201~",
   },
-}, "multi-line text must be bracketed and submitted in one write")
+}, "multi-line text must be sent as a bracketed paste first")
+assert_equal(#deferred, 1, "submitting must wait for the paste to be processed")
+assert_equal(deferred[1].delay, 50, "submission must be delayed after the paste")
+deferred[1].callback()
+assert_equal(sent[2], { channel = 42, payload = "\r" }, "Enter must be sent separately after the paste")
 
 sent = {}
+deferred = {}
 ok = terminal.send("single line", { submit = false })
 assert(ok, "submit=false must still send text")
 assert_equal(sent, { { channel = 42, payload = "single line" } })
@@ -77,21 +88,58 @@ local original_termopen = vim.fn.termopen
 state.buf = nil
 state.win = nil
 state.job = nil
-vim.fn.termopen = function()
+local launched_command
+local launched_opts
+vim.fn.termopen = function(command, opts)
+  launched_command = command
+  launched_opts = opts
   return 42
 end
 sent = {}
+deferred = {}
+ok = terminal.send("cold prompt\nwith code")
+assert(ok, "a cold-start prompt must be accepted")
+assert_equal(launched_command, { "codex", "--", "cold prompt\nwith code" },
+  "a cold-start submitted prompt must be passed to Codex as its initial prompt")
+assert_equal(sent, {}, "a cold-start prompt must not be written before the TUI is ready")
+local prompt_buf = state.buf
+terminal.close()
+state.job = nil
+if vim.api.nvim_buf_is_valid(prompt_buf) then
+  vim.api.nvim_buf_delete(prompt_buf, { force = true })
+end
+state.buf = nil
+state.win = nil
+state.starting = false
+state.pending_sends = {}
+deferred = {}
+
 ok = terminal.send("opened selection", { submit = false })
 assert(ok, "text must be queued when Codex was not already open")
 assert(state.buf and state.win and state.job == 42, "sending text must open Codex when necessary")
 assert_equal(sent, {}, "cold-start text must wait for the Codex prompt")
 assert_equal(#deferred, 1, "opening starts one startup queue timer")
-assert_equal(deferred[1].delay, 300)
+assert_equal(deferred[1].delay, 50)
 
 ok = terminal.send("queued second", { submit = false })
 assert(ok, "a second cold-start send must be accepted")
 assert_equal(#deferred, 1, "all cold-start sends must share the startup timer")
 deferred[1].callback()
+assert_equal(sent, {}, "elapsed time alone must not flush startup input")
+launched_opts.on_stdout(42, { "\27[?2004h\27[?25h" })
+vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "› 1. Trust and continue" })
+deferred[2].callback()
+assert_equal(sent, {}, "a numbered startup menu must never receive queued text")
+vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { "› " })
+launched_opts.on_stdout(42, { "\27[?25l" })
+deferred[3].callback()
+assert_equal(sent, {}, "a hidden input cursor must keep the draft queued")
+launched_opts.on_stdout(42, { "\27[?2" })
+launched_opts.on_stdout(42, { "5h" })
+deferred[4].callback()
+assert_equal(sent, {}, "the composer must settle before input is flushed")
+clock = 300 * 1e6
+deferred[5].callback()
 assert_equal(sent, {
   { channel = 42, payload = "opened selection" },
   { channel = 42, payload = "queued second" },
@@ -125,6 +173,7 @@ terminal.open = original_open
 vim.fn.jobwait = original_jobwait
 vim.fn.chansend = original_chansend
 vim.defer_fn = original_defer_fn
+uv.hrtime = original_hrtime
 vim.api.nvim_win_set_buf(0, original_buf)
 vim.api.nvim_buf_delete(buffer, { force = true })
 state.buf = nil

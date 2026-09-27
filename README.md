@@ -173,7 +173,7 @@ require("codex").setup({
   enter_insert = true,
   auto_close = true,
   focus_after_send = true,
-  startup_delay_ms = 300,             -- settle the TUI before flushing queued sends
+  startup_delay_ms = 300,             -- settle the editable input before flushing queued sends
   selection = {
     include_text = "if_modified",    -- "never", "if_modified", or "always"
     max_chars = 12000,                -- bound in-memory selection context
@@ -253,6 +253,12 @@ loaded Neovim buffer. Its current contents, including unsaved changes, are
 inserted into the Codex prompt without pressing Enter. This lets you add an
 instruction before submitting it. Terminal buffers are excluded from the
 picker.
+
+When an insertion starts Codex, the text stays queued until its editable input
+appears. Complete any login or folder-trust dialog normally; the plugin then
+inserts the queued selections and buffers once, without submitting them.
+`startup_delay_ms` is the settling time after the input appears, not a timeout
+that sends text into a startup dialog.
 
 ### Visual-selection context
 

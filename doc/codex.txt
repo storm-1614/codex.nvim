@@ -86,7 +86,8 @@ git_repo_cwd            Resolve cwd from the current file, default: true.
 split_side              "left" or "right", default: "right".
 split_width_percentage  Side panel width fraction, default: 0.35.
 auto_close              Close panel after CLI exit, default: true.
-startup_delay_ms        Delay before the first send to a new CLI, default: 300.
+startup_delay_ms        Settle time after the editable input appears, default: 300.
+                       Startup dialogs keep text queued until the input is ready.
 selection.include_text  Include selected in-memory text: "never",
                         "if_modified" (default), or "always".
 selection.max_chars     Maximum selected in-memory characters, default: 12000.

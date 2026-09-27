@@ -4,7 +4,7 @@ local config = require("codex.config")
 local terminal = require("codex.terminal")
 
 config.setup({
-  terminal_cmd = { "sh", "-c", "sleep 0.1; printf 'READY\\n'; cat" },
+  terminal_cmd = { "sh", "-c", "sleep 0.1; printf '\\033[?2004h\\033[?25h› READY\\n'; cat" },
   startup_delay_ms = 300,
   enter_insert = false,
   focus_after_send = false,

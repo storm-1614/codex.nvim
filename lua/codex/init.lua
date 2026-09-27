@@ -87,10 +87,16 @@ end
 function M.open(args)
   args = args or {}
   if #args > 0 then
+    local prompt = table.concat(args, " ")
+    if not terminal.is_running() then
+      -- The CLI supports an initial prompt argument; use it on cold starts so
+      -- trust/setup gates cannot consume a prompt sent into the PTY too early.
+      return terminal.open({ "--", prompt })
+    end
     if not terminal.open() then
       return false
     end
-    return terminal.send(table.concat(args, " "))
+    return terminal.send(prompt)
   end
   return terminal.open()
 end
