@@ -110,8 +110,8 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 | `<leader>ah` | Normal | Check Codex CLI, project directory, and session health |
 | `<leader>ab` | Normal | Send the current file |
 | `<leader>ab` | Visual | Insert the selected file and line range |
-| `<leader>as` | Normal | Add the current file |
-| `<leader>as` | Visual | Insert the selected file and line range |
+| `<leader>as` | Normal | Add the current file to the prompt for editing |
+| `<leader>as` | Visual | Insert the selected file and line range for editing |
 | `<leader>aa` | Normal | Accept current diff compatibility action |
 | `<leader>ad` | Normal | Deny current diff compatibility action |
 | `<leader>aA` | Normal | Accept all diff compatibility actions |
@@ -142,7 +142,7 @@ The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. I
 :CodexSend Explain this function   " Send a prompt and press Enter
 :CodexSendText Explain this code   " Send text and press Enter
 :CodexSendText! partial text       " Send text without pressing Enter
-:CodexTreeAdd path/to/file.lua     " Send a file path from a file tree
+:CodexTreeAdd path/to/file.lua     " Insert a file path from a file tree without submitting
 :CodexSelectModel                  " Select or enter a model
 :CodexSelectBuffer                 " Choose a buffer and insert its contents
 ```
@@ -308,7 +308,7 @@ selected file to Codex. It intentionally ignores directories.
       vim.notify("Select a file in Neo-tree first", vim.log.levels.WARN)
     end
   end,
-  desc = "Send selected file to Codex",
+  desc = "Add selected file to Codex prompt",
 },
 ```
 

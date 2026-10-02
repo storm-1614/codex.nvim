@@ -243,7 +243,17 @@ function M.add_current(file, start_line, end_line)
 end
 
 function M.tree_add(file)
-  return M.add_current(file)
+  local target = file
+  if not target or target == "" then
+    target = util.current_file()
+  end
+  if not target then
+    util.notify("The current buffer has no file name", vim.log.levels.WARN)
+    return false
+  end
+
+  local location = vim.fn.fnamemodify(vim.fn.expand(target), ":p")
+  return terminal.send("Please inspect and process this file: " .. location, { submit = false })
 end
 
 local function diff_notice(action)

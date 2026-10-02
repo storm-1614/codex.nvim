@@ -32,25 +32,31 @@ assert_equal(sent[2], {
   opts = nil,
 }, "an unranged :CodexAdd must send the whole current file")
 
+assert(codex.tree_add("/tmp/tree-file.lua"), "a tree file must be accepted")
+assert_equal(sent[3], {
+  text = "Please inspect and process this file: /tmp/tree-file.lua",
+  opts = { submit = false },
+}, "adding a tree file must leave its prompt editable")
+
 local namespace = vim.api.nvim_create_namespace("codex-command-spec")
 vim.diagnostic.set(namespace, 0, {
   { lnum = 1, col = 2, severity = vim.diagnostic.severity.ERROR, source = "test", message = "bad value" },
 })
 vim.cmd("CodexDiagnostics")
-assert_equal(sent[3], {
+assert_equal(sent[4], {
   text = "Please diagnose these Neovim diagnostics. Inspect the relevant source before proposing a fix. Do not modify files yet.\n\nDiagnostics:\n- ERROR /tmp/codex-command-spec.lua:2:3 [test]: bad value",
   opts = nil,
 }, ":CodexDiagnostics must send current-buffer diagnostics")
 
 vim.fn.setqflist({ { filename = "/tmp/codex-command-spec.lua", lnum = 3, col = 1, type = "W", text = "unused value" } })
 vim.cmd("CodexQuickfix")
-assert_equal(sent[4], {
+assert_equal(sent[5], {
   text = "Please diagnose these Neovim diagnostics. Inspect the relevant source before proposing a fix. Do not modify files yet.\n\nDiagnostics:\n- WARN /tmp/codex-command-spec.lua:3:1: unused value",
   opts = nil,
 }, ":CodexQuickfix must send the current quickfix list")
 
 vim.cmd("CodexReview")
-assert_equal(sent[5], {
+assert_equal(sent[6], {
   text = "Review the current uncommitted workspace changes. Inspect the working tree and relevant diff yourself. Do not modify files. Report only actionable findings, ordered by severity, with file and line references; if there are no findings, say so briefly.",
   opts = nil,
 }, ":CodexReview must request a non-mutating workspace review")
@@ -73,14 +79,14 @@ assert_equal(opened, { "resume", "--last" }, "continue must target the latest se
 
 assert(codex.open({ "inspect", "this" }), "a cold :Codex prompt must launch successfully")
 assert_equal(opened, { "--", "inspect this" }, "a cold :Codex prompt must use Codex's initial prompt argument")
-assert_equal(#sent, 5, "a cold :Codex prompt must not also be written into the PTY")
+assert_equal(#sent, 6, "a cold :Codex prompt must not also be written into the PTY")
 
 terminal.is_running = function()
   return true
 end
 assert(codex.open({ "follow", "up" }), "a prompt for a running session must send successfully")
 assert(opened == nil, "a running session must reopen without CLI prompt arguments")
-assert_equal(sent[6], { text = "follow up", opts = nil }, "a running session must receive the prompt over the TUI input")
+assert_equal(sent[7], { text = "follow up", opts = nil }, "a running session must receive the prompt over the TUI input")
 
 terminal.send = original_send
 terminal.open = original_open

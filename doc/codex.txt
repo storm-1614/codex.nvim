@@ -46,7 +46,7 @@ COMMANDS                                                       *codex-commands*
 :CodexAdd              Send the current file; an Ex range adds line context.
 :CodexSend {prompt}    Send a prompt to Codex.
 :CodexSendText {text}   Send text; with ! do not press Enter.
-:CodexTreeAdd {file}    Send a file from a tree to Codex.
+:CodexTreeAdd {file}    Insert a file reference from a tree without submitting it.
 :CodexSelectModel      Select a configured model or enter one.
 :CodexSelectBuffer     Choose a buffer and insert its contents into Codex.
 
@@ -68,7 +68,7 @@ Default mappings (when `keymaps.enabled` is true):
 <leader>aR              Review current workspace changes without editing.
 <leader>ah              Check CLI, current project directory, and session state.
 <leader>ab              Send current file or insert a visual selection reference.
-<leader>as              Insert the selected file and line range into the Codex prompt.
+<leader>as              Insert the selected file reference into the Codex prompt without submitting it.
 <leader>aa / <leader>ad Accept / deny current diff compatibility action.
 <leader>aA / <leader>aD Accept / deny all diff compatibility action.
 <leader>am              Select model.
