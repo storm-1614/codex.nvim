@@ -97,6 +97,8 @@ require("codex").send("Please explain the current function")
 
 The default mappings follow the `<leader>a*` layout used by `claudecode.nvim`. If your `<leader>` is the space key, `<leader>ac` means `Space`, `a`, `c`.
 
+In the Codex terminal buffer, Normal-mode `<C-u>` / `<PageUp>` and `<C-d>` / `<PageDown>` scroll Codex's conversation by one page. These mappings are local to the Codex buffer and do not affect other Neovim windows.
+
 | Key | Mode | Action |
 | --- | --- | --- |
 | `<leader>ac` | Normal | Toggle the Codex side panel |

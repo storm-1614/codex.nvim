@@ -245,6 +245,22 @@ local function focus_session(session)
   return false
 end
 
+local function install_scroll_keymaps(session)
+  local page_keys = {
+    ["<C-u>"] = "\27[5~",
+    ["<PageUp>"] = "\27[5~",
+    ["<C-d>"] = "\27[6~",
+    ["<PageDown>"] = "\27[6~",
+  }
+  for key, sequence in pairs(page_keys) do
+    vim.keymap.set("n", key, function()
+      if job_is_running(session) then
+        pcall(vim.fn.chansend, session.job, sequence)
+      end
+    end, { buffer = session.buf, silent = true, desc = "Codex: scroll conversation" })
+  end
+end
+
 function M.get_state()
   return select_session(true)
 end
@@ -329,6 +345,7 @@ function M.open(extra_args)
   end
 
   session.job = job
+  install_scroll_keymaps(session)
   session.starting = true
   session.startup = {
     tail = "", paste = false, cursor = false,
