@@ -246,10 +246,23 @@ local function focus_session(session)
 end
 
 local function install_scroll_keymaps(session)
+  -- Codex's regular conversation view consumes wheel events (three rows each).
+  -- Its native Ctrl-U/Ctrl-D half-page bindings belong to the pager instead.
+  for key, button in pairs({ ["<C-u>"] = 64, ["<C-d>"] = 65 }) do
+    vim.keymap.set("n", key, function()
+      if not job_is_running(session) or not util.is_valid_win(session.win) then
+        return
+      end
+      local height = vim.api.nvim_win_get_height(session.win)
+      local ticks = math.max(1, math.floor(height / 6 + 0.5))
+      -- SGR coordinates are one-based and relative to the child terminal.
+      -- Row two avoids the pinned prompt header at the top of the transcript.
+      local sequence = string.format("\27[<%d;1;%dM", button, math.min(2, height))
+      pcall(vim.fn.chansend, session.job, sequence:rep(ticks))
+    end, { buffer = session.buf, silent = true, desc = "Codex: scroll conversation half a page" })
+  end
   local page_keys = {
-    ["<C-u>"] = "\27[5~",
     ["<PageUp>"] = "\27[5~",
-    ["<C-d>"] = "\27[6~",
     ["<PageDown>"] = "\27[6~",
   }
   for key, sequence in pairs(page_keys) do

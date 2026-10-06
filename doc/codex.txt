@@ -75,9 +75,11 @@ Default mappings (when `keymaps.enabled` is true):
 <leader>ap              Choose a buffer and insert its contents into Codex.
 <leader>ax              Stop Codex.
 
-In the Codex terminal buffer, Normal-mode <C-u> / <PageUp> scroll the
-conversation up one page; <C-d> / <PageDown> scroll down one page. These
-mappings are local to that buffer.
+In the Codex terminal buffer, Normal-mode <C-u> / <C-d> scroll the
+conversation up / down by approximately half the window height using
+mouse-wheel events (three rows per event in Codex CLI 0.160.0).
+<PageUp> / <PageDown> scroll by one page. These mappings are local to
+that buffer.
 
 ==============================================================================
 CONFIGURATION                                                    *codex-config*
